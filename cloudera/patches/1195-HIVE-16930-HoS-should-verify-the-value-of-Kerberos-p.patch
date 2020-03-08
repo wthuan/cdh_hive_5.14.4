@@ -1,0 +1,69 @@
+From 981def7f873c38166cfac62d461b8c53b012feaa Mon Sep 17 00:00:00 2001
+From: Chaoyu Tang <ctang@cloudera.com>
+Date: Thu, 22 Jun 2017 16:53:55 -0400
+Subject: [PATCH 1195/1363] HIVE-16930: HoS should verify the value of
+ Kerberos principal and keytab file before adding
+ them to spark-submit command parameters (Yibing
+ Shi via Chaoyu Tang)
+
+Change-Id: Ia02f3ecd1dcd5a66aaf8a30281e08c3e75c481c0
+---
+ .../apache/hive/spark/client/SparkClientImpl.java  |   35 +++++++++++---------
+ 1 file changed, 19 insertions(+), 16 deletions(-)
+
+diff --git a/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java b/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java
+index a019fae..6b6b230 100644
+--- a/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java
++++ b/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java
+@@ -54,6 +54,7 @@
+ import java.util.concurrent.TimeoutException;
+ import java.util.concurrent.atomic.AtomicInteger;
+ 
++import org.apache.commons.lang3.StringUtils;
+ import org.apache.hadoop.hive.conf.Constants;
+ import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+@@ -402,22 +403,24 @@ public void run() {
+         String principal = SecurityUtil.getServerPrincipal(hiveConf.getVar(ConfVars.HIVE_SERVER2_KERBEROS_PRINCIPAL),
+             "0.0.0.0");
+         String keyTabFile = hiveConf.getVar(ConfVars.HIVE_SERVER2_KERBEROS_KEYTAB);
+-        if (hiveConf.getBoolVar(HiveConf.ConfVars.HIVE_SERVER2_ENABLE_DOAS)) {
+-          List<String> kinitArgv = Lists.newLinkedList();
+-          kinitArgv.add("kinit");
+-          kinitArgv.add(principal);
+-          kinitArgv.add("-k");
+-          kinitArgv.add("-t");
+-          kinitArgv.add(keyTabFile + ";");
+-          kinitArgv.addAll(argv);
+-          argv = kinitArgv;
+-        } else {
+-          // if doAs is not enabled, we pass the principal/keypad to spark-submit in order to
+-          // support the possible delegation token renewal in Spark
+-          argv.add("--principal");
+-          argv.add(principal);
+-          argv.add("--keytab");
+-          argv.add(keyTabFile);
++        if (StringUtils.isNotBlank(principal) && StringUtils.isNotBlank(keyTabFile)) {
++          if (hiveConf.getBoolVar(HiveConf.ConfVars.HIVE_SERVER2_ENABLE_DOAS)) {
++            List<String> kinitArgv = Lists.newLinkedList();
++            kinitArgv.add("kinit");
++            kinitArgv.add(principal);
++            kinitArgv.add("-k");
++            kinitArgv.add("-t");
++            kinitArgv.add(keyTabFile + ";");
++            kinitArgv.addAll(argv);
++            argv = kinitArgv;
++          } else {
++            // if doAs is not enabled, we pass the principal/keypad to spark-submit in order to
++            // support the possible delegation token renewal in Spark
++            argv.add("--principal");
++            argv.add(principal);
++            argv.add("--keytab");
++            argv.add(keyTabFile);
++          }
+         }
+       }
+       if (hiveConf.getBoolVar(HiveConf.ConfVars.HIVE_SERVER2_ENABLE_DOAS)) {
+-- 
+1.7.9.5
+

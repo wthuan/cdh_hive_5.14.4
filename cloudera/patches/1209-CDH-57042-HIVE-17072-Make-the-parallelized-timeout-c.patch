@@ -1,0 +1,40 @@
+From 0ac7f9422e1f852fab897b3b621776e23d9fd6f2 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Wed, 26 Jul 2017 11:00:48 +0200
+Subject: [PATCH 1209/1363] CDH-57042 HIVE-17072: Make the parallelized
+ timeout configurable in BeeLine tests (Marta
+ Kuczora, reviewed by Peter Vary)
+
+(cherry picked from commit 0836d1a650b86b09408b92f516fed06fe08f420f)
+
+Change-Id: I399a4758a37fac2890bb9af6bc6c78d119722541
+---
+ .../java/org/apache/hive/beeline/Parallelized.java |    5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/itests/util/src/main/java/org/apache/hive/beeline/Parallelized.java b/itests/util/src/main/java/org/apache/hive/beeline/Parallelized.java
+index a819e26..5cef4c7 100644
+--- a/itests/util/src/main/java/org/apache/hive/beeline/Parallelized.java
++++ b/itests/util/src/main/java/org/apache/hive/beeline/Parallelized.java
+@@ -30,6 +30,7 @@
+  */
+ public class Parallelized extends Parameterized {
+   private static class ThreadPoolScheduler implements RunnerScheduler {
++    private static final String DEFAULT_TIMEOUT = "10";
+     private ExecutorService executor;
+ 
+     public ThreadPoolScheduler() {
+@@ -45,7 +46,9 @@ public ThreadPoolScheduler() {
+     public void finished() {
+       executor.shutdown();
+       try {
+-        executor.awaitTermination(10, TimeUnit.MINUTES);
++        String timeoutProp = System.getProperty("junit.parallel.timeout", DEFAULT_TIMEOUT);
++        long timeout = Long.parseLong(timeoutProp);
++        executor.awaitTermination(timeout, TimeUnit.MINUTES);
+       } catch (InterruptedException exc) {
+         throw new RuntimeException(exc);
+       }
+-- 
+1.7.9.5
+

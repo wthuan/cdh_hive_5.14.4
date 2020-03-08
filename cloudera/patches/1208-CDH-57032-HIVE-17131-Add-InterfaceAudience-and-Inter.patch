@@ -1,0 +1,218 @@
+From 009d03dc88e4478b5031ab4841af81cc944a5f3f Mon Sep 17 00:00:00 2001
+From: Sahil Takiar <takiar.sahil@gmail.com>
+Date: Tue, 25 Jul 2017 21:19:24 -0700
+Subject: [PATCH 1208/1363] CDH-57032: HIVE-17131: Add InterfaceAudience and
+ InterfaceStability annotations for SerDe APIs
+ (Sahil Takiar, reviewed by Ashutosh Chauhan)
+
+(cherry picked from commit a9e5427e5185e47ce2dc28130e475a7037406463)
+
+Change-Id: If7e5a93986045227d72e98fffa5cb1b9872078b0
+---
+ .../hadoop/hive/serde2/AbstractDeserializer.java   |    4 ++++
+ .../apache/hadoop/hive/serde2/AbstractSerDe.java   |    4 ++++
+ .../hadoop/hive/serde2/AbstractSerializer.java     |    4 ++++
+ .../apache/hadoop/hive/serde2/Deserializer.java    |    4 ++++
+ .../java/org/apache/hadoop/hive/serde2/SerDe.java  |    5 +++++
+ .../apache/hadoop/hive/serde2/SerDeException.java  |    6 +++++-
+ .../org/apache/hadoop/hive/serde2/SerDeStats.java  |    5 +++++
+ .../org/apache/hadoop/hive/serde2/Serializer.java  |    4 ++++
+ .../serde2/objectinspector/ObjectInspector.java    |    5 +++++
+ 9 files changed, 40 insertions(+), 1 deletion(-)
+
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/AbstractDeserializer.java b/serde/src/java/org/apache/hadoop/hive/serde2/AbstractDeserializer.java
+index 869b86b..e850406 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/AbstractDeserializer.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/AbstractDeserializer.java
+@@ -21,6 +21,8 @@
+ import java.util.Properties;
+ 
+ import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+ import org.apache.hadoop.io.Writable;
+ 
+@@ -29,6 +31,8 @@
+  * new methods can be added in the underlying interface, Deserializer, and only implementations
+  * that need those methods overwrite it.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class AbstractDeserializer implements Deserializer {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/AbstractSerDe.java b/serde/src/java/org/apache/hadoop/hive/serde2/AbstractSerDe.java
+index c5e78c5..3a96e03 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/AbstractSerDe.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/AbstractSerDe.java
+@@ -21,6 +21,8 @@
+ import java.util.Properties;
+ 
+ import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+ import org.apache.hadoop.io.Writable;
+ 
+@@ -31,6 +33,8 @@
+  * new methods can be added in the underlying interface, SerDe, and only implementations
+  * that need those methods overwrite it.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class AbstractSerDe implements SerDe {
+ 
+   protected String configErrors;
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/AbstractSerializer.java b/serde/src/java/org/apache/hadoop/hive/serde2/AbstractSerializer.java
+index 570b4bb..8b30056 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/AbstractSerializer.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/AbstractSerializer.java
+@@ -21,6 +21,8 @@
+ import java.util.Properties;
+ 
+ import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+ import org.apache.hadoop.io.Writable;
+ 
+@@ -29,6 +31,8 @@
+  * new methods can be added in the underlying interface, Serializer, and only implementations
+  * that need those methods overwrite it.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class AbstractSerializer implements Serializer {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/Deserializer.java b/serde/src/java/org/apache/hadoop/hive/serde2/Deserializer.java
+index df27db2..d21dbce 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/Deserializer.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/Deserializer.java
+@@ -21,6 +21,8 @@
+ import java.util.Properties;
+ 
+ import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+ import org.apache.hadoop.io.Writable;
+ 
+@@ -35,6 +37,8 @@
+  * Deserializer interface should be removed
+  */
+ @Deprecated
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface Deserializer {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/SerDe.java b/serde/src/java/org/apache/hadoop/hive/serde2/SerDe.java
+index db15ce5..628eefe 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/SerDe.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/SerDe.java
+@@ -18,6 +18,9 @@
+ 
+ package org.apache.hadoop.hive.serde2;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * A union of HiveDeserializer and HiveSerializer interface.
+  *
+@@ -30,6 +33,8 @@
+  * should be removed
+  */
+ @Deprecated
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface SerDe extends Deserializer, Serializer {
+ 
+ }
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/SerDeException.java b/serde/src/java/org/apache/hadoop/hive/serde2/SerDeException.java
+index ea1ae9c..7c114ff 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/SerDeException.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/SerDeException.java
+@@ -18,11 +18,15 @@
+ 
+ package org.apache.hadoop.hive.serde2;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * Generic exception class for SerDes.
+  * 
+  */
+-
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class SerDeException extends Exception {
+   private static final long serialVersionUID = 1L;
+ 
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/SerDeStats.java b/serde/src/java/org/apache/hadoop/hive/serde2/SerDeStats.java
+index 6cf2ccd..1231248 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/SerDeStats.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/SerDeStats.java
+@@ -18,6 +18,11 @@
+ 
+ package org.apache.hadoop.hive.serde2;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class SerDeStats {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/Serializer.java b/serde/src/java/org/apache/hadoop/hive/serde2/Serializer.java
+index b39db89..c91f1ed 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/Serializer.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/Serializer.java
+@@ -21,6 +21,8 @@
+ import java.util.Properties;
+ 
+ import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+ import org.apache.hadoop.io.Writable;
+ 
+@@ -32,6 +34,8 @@
+  * Serializer interface should be removed
+  */
+ @Deprecated
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface Serializer {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ObjectInspector.java
+index d90560b..c8bf6ea 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ObjectInspector.java
+@@ -18,6 +18,9 @@
+ 
+ package org.apache.hadoop.hive.serde2.objectinspector;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * ObjectInspector helps us to look into the internal structure of a complex
+  * object.
+@@ -35,6 +38,8 @@
+  * also makes sure hashCode() and equals() methods of java.lang.Object directly
+  * works for ObjectInspector as well.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface ObjectInspector extends Cloneable {
+ 
+   /**
+-- 
+1.7.9.5
+

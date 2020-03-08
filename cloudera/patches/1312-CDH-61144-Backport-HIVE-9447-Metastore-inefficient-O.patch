@@ -1,0 +1,78 @@
+From e5bbb1517b968f0f21fc91d3be6ce7ae7e3383f8 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Mon, 30 Oct 2017 10:38:26 +0100
+Subject: [PATCH 1312/1363] CDH-61144: Backport HIVE-9447: Metastore:
+ inefficient Oracle query for removing unused
+ column descriptors when add/drop table/partition
+ (Selina Zhang reviewed by Ashutosh Chauhan, Adam
+ Szita)
+
+Change-Id: Idee3fffce07c1d2139239f1c163c26230e8b4225
+---
+ .../apache/hadoop/hive/metastore/ObjectStore.java  |   42 +++-----------------
+ 1 file changed, 6 insertions(+), 36 deletions(-)
+
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/ObjectStore.java b/metastore/src/java/org/apache/hadoop/hive/metastore/ObjectStore.java
+index 5e666e5..5eb3a0b 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/ObjectStore.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/ObjectStore.java
+@@ -3306,9 +3306,13 @@ private void removeUnusedColumnDescriptor(MColumnDescriptor oldCD) {
+     try {
+       openTransaction();
+       LOG.debug("execute removeUnusedColumnDescriptor");
+-      List<MStorageDescriptor> referencedSDs = listStorageDescriptorsWithCD(oldCD, 1, queryWrapper);
++      Query query = pm.newQuery("select count(1) from " +
++        "org.apache.hadoop.hive.metastore.model.MStorageDescriptor where (this.cd == inCD)");
++      query.declareParameters("MColumnDescriptor inCD");
++      long count = ((Long)query.execute(oldCD)).longValue();
++
+       //if no other SD references this CD, we can throw it out.
+-      if (referencedSDs != null && referencedSDs.isEmpty()) {
++      if (count == 0) {
+         pm.retrieve(oldCD);
+         pm.deletePersistent(oldCD);
+       }
+@@ -3341,40 +3345,6 @@ private void preDropStorageDescriptor(MStorageDescriptor msd) {
+     removeUnusedColumnDescriptor(mcd);
+   }
+ 
+-  /**
+-   * Get a list of storage descriptors that reference a particular Column Descriptor
+-   * @param oldCD the column descriptor to get storage descriptors for
+-   * @param maxSDs the maximum number of SDs to return
+-   * @return a list of storage descriptors
+-   */
+-  private List<MStorageDescriptor> listStorageDescriptorsWithCD(
+-      MColumnDescriptor oldCD,
+-      long maxSDs,
+-      QueryWrapper queryWrapper) {
+-    boolean success = false;
+-    List<MStorageDescriptor> sds = null;
+-    try {
+-      openTransaction();
+-      LOG.debug("Executing listStorageDescriptorsWithCD");
+-      Query query = queryWrapper.query = pm.newQuery(MStorageDescriptor.class, "this.cd == inCD");
+-      query.declareParameters("MColumnDescriptor inCD");
+-      if (maxSDs >= 0) {
+-        // User specified a row limit, set it on the Query
+-        query.setRange(0, maxSDs);
+-      }
+-      sds = (List<MStorageDescriptor>)query.execute(oldCD);
+-      LOG.debug("Done executing query for listStorageDescriptorsWithCD");
+-      pm.retrieveAll(sds);
+-      success = commitTransaction();
+-      LOG.debug("Done retrieving all objects for listStorageDescriptorsWithCD");
+-    } finally {
+-      if (!success) {
+-        rollbackTransaction();
+-      }
+-    }
+-    return sds;
+-  }
+-
+   @Override
+   public String getMetastoreDbUuid() throws MetaException {
+     String ret = getGuidFromDB();
+-- 
+1.7.9.5
+

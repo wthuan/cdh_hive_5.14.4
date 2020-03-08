@@ -1,0 +1,88 @@
+From 0637d15f0bdb2752f5ffd21fbd5e97df3766517f Mon Sep 17 00:00:00 2001
+From: stakiar <stakiar@cloudera.com>
+Date: Tue, 29 Aug 2017 17:44:37 -0700
+Subject: [PATCH 1259/1363] CLOUDERA-BUILD: CDH-55801:
+ ParallelDirectoryRenamer threadpool not shutdown
+ correctly when exception is thrown
+
+Change-Id: I5978ac4aa9e679bafca0498570a4ea19f81bbe86
+---
+ .../org/apache/hadoop/hive/ql/exec/Utilities.java  |   12 +++++++++---
+ .../org/apache/hadoop/hive/ql/metadata/Hive.java   |   14 ++++++++++----
+ .../hive/ql/util/ParallelDirectoryRenamer.java     |    3 +--
+ 3 files changed, 20 insertions(+), 9 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
+index 13d89ce..1daa3f3 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
+@@ -1807,11 +1807,17 @@ public static void renameOrMoveFiles(Configuration conf, FileSystem fs, Path src
+     if (!fs.exists(dst)) {
+       final boolean shouldRenameDirectoryInParallel = BlobStorageUtils.shouldRenameDirectoryInParallel(conf, fs, fs);
+       if (shouldRenameDirectoryInParallel && conf.getInt(ConfVars.HIVE_MOVE_FILES_THREAD_COUNT.varname, 25) > 0) {
+-        final ExecutorService pool = Executors.newFixedThreadPool(
++        ExecutorService pool = null;
++        try {
++          pool = Executors.newFixedThreadPool(
+                 conf.getInt(ConfVars.HIVE_MOVE_FILES_THREAD_COUNT.varname, 25),
+                 new ThreadFactoryBuilder().setDaemon(true).setNameFormat("Move-Thread-%d").build());
+-        ParallelDirectoryRenamer.renameDirectoryInParallel(conf, fs, fs, src, dst, true, SessionState.get(), pool);
+-        pool.shutdown();
++          ParallelDirectoryRenamer.renameDirectoryInParallel(conf, fs, fs, src, dst, true, SessionState.get(), pool);
++        } finally {
++          if (pool != null) {
++            pool.shutdownNow();
++          }
++        }
+       } else if (!fs.rename(src, dst)) {
+         throw new HiveException("Unable to move: " + src + " to: " + dst);
+       }
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/metadata/Hive.java b/ql/src/java/org/apache/hadoop/hive/ql/metadata/Hive.java
+index 97cbb59..6799187 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/metadata/Hive.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/metadata/Hive.java
+@@ -2960,12 +2960,18 @@ public Void call() throws HiveException {
+             return true;
+           } else {
+             if (shouldRenameDirectoryInParallel && conf.getInt(ConfVars.HIVE_MOVE_FILES_THREAD_COUNT.varname, 25) > 0) {
+-              final ExecutorService pool = Executors.newFixedThreadPool(
++              ExecutorService pool = null;
++              try {
++                pool = Executors.newFixedThreadPool(
+                       conf.getInt(ConfVars.HIVE_MOVE_FILES_THREAD_COUNT.varname, 25),
+                       new ThreadFactoryBuilder().setDaemon(true).setNameFormat("Move-Thread-%d").build());
+-              ParallelDirectoryRenamer.renameDirectoryInParallel(conf, srcFs, destFs, srcf, destf, inheritPerms,
+-                      SessionState.get(), pool);
+-              pool.shutdown();
++                ParallelDirectoryRenamer.renameDirectoryInParallel(conf, srcFs, destFs, srcf, destf, inheritPerms,
++                        SessionState.get(), pool);
++              } finally {
++                if (pool != null) {
++                  pool.shutdownNow();
++                }
++              }
+               return true;
+             } else {
+               if (destFs.rename(srcf, destf)) {
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/util/ParallelDirectoryRenamer.java b/ql/src/java/org/apache/hadoop/hive/ql/util/ParallelDirectoryRenamer.java
+index b5e97d8..85c4d53 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/util/ParallelDirectoryRenamer.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/util/ParallelDirectoryRenamer.java
+@@ -114,13 +114,12 @@ public Void call() throws Exception {
+           }
+         }));
+       }
+-
++      pool.shutdown();
+       for (Future<Void> future : futures) {
+         try {
+           future.get();
+         } catch (Exception e) {
+           LOG.debug(e.getMessage());
+-          pool.shutdownNow();
+           throw new HiveException(e);
+         }
+       }
+-- 
+1.7.9.5
+

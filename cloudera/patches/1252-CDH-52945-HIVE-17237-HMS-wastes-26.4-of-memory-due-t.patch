@@ -1,0 +1,162 @@
+From 5992f605b18efc6828c0988991af2401f5704740 Mon Sep 17 00:00:00 2001
+From: Misha Dmitriev <misha@cloudera.com>
+Date: Tue, 22 Aug 2017 16:59:13 -0700
+Subject: [PATCH 1252/1363] CDH-52945: HIVE-17237: HMS wastes 26.4% of memory
+ due to dup strings in
+ metastore.api.Partition.parameters
+
+Change-Id: Ia8ecc2a3096b4ffbb040b667bb07cffd5478bafa
+---
+ .../apache/hive/common/util/HiveStringUtils.java   |   11 ++---------
+ .../hadoop/hive/metastore/api/Partition.java       |    6 +++---
+ .../hadoop/hive/metastore/api/SerDeInfo.java       |    6 +++---
+ .../hive/metastore/api/StorageDescriptor.java      |    6 +++---
+ .../src/main/resources/thrift-replacements.txt     |    8 ++++++++
+ 5 files changed, 19 insertions(+), 18 deletions(-)
+
+diff --git a/common/src/java/org/apache/hive/common/util/HiveStringUtils.java b/common/src/java/org/apache/hive/common/util/HiveStringUtils.java
+index 8595813..443a9bc 100644
+--- a/common/src/java/org/apache/hive/common/util/HiveStringUtils.java
++++ b/common/src/java/org/apache/hive/common/util/HiveStringUtils.java
+@@ -79,18 +79,11 @@
+       }).with(
+         new LookupTranslator(EntityArrays.JAVA_CTRL_CHARS_ESCAPE()));
+ 
+-  /**
+-   * Maintain a String pool to reduce memory.
+-   */
+-  private static final Interner<String> STRING_INTERNER;
+-
+   static {
+     NumberFormat numberFormat = NumberFormat.getNumberInstance(Locale.ENGLISH);
+     decimalFormat = (DecimalFormat) numberFormat;
+     decimalFormat.applyPattern("#.##");
+-
+-    STRING_INTERNER = Interners.newWeakInterner();
+-  }
++}
+ 
+   /**
+    * Return the internalized string, or null if the given string is null.
+@@ -101,7 +94,7 @@ public static String intern(String str) {
+     if(str == null) {
+       return null;
+     }
+-    return STRING_INTERNER.intern(str);
++    return str.intern();
+   }
+ 
+   /**
+diff --git a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/Partition.java b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/Partition.java
+index 242d54d..374b6fc 100644
+--- a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/Partition.java
++++ b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/Partition.java
+@@ -412,7 +412,7 @@ public void putToParameters(String key, String val) {
+     if (this.parameters == null) {
+       this.parameters = new HashMap<String,String>();
+     }
+-    this.parameters.put(key, val);
++    this.parameters.put(org.apache.hive.common.util.HiveStringUtils.intern(key), org.apache.hive.common.util.HiveStringUtils.intern(val));
+   }
+ 
+   public Map<String,String> getParameters() {
+@@ -1012,7 +1012,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, Partition struct) t
+                 }
+                 iprot.readMapEnd();
+               }
+-              struct.setParametersIsSet(true);
++              struct.parameters = org.apache.hive.common.util.HiveStringUtils.intern(struct.parameters); struct.setParametersIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+             }
+@@ -1225,7 +1225,7 @@ public void read(org.apache.thrift.protocol.TProtocol prot, Partition struct) th
+             struct.parameters.put(_key224, _val225);
+           }
+         }
+-        struct.setParametersIsSet(true);
++        struct.parameters = org.apache.hive.common.util.HiveStringUtils.intern(struct.parameters); struct.setParametersIsSet(true);
+       }
+       if (incoming.get(7)) {
+         struct.privileges = new PrincipalPrivilegeSet();
+diff --git a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/SerDeInfo.java b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/SerDeInfo.java
+index 2466d8f..b236eff 100644
+--- a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/SerDeInfo.java
++++ b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/SerDeInfo.java
+@@ -234,7 +234,7 @@ public void putToParameters(String key, String val) {
+     if (this.parameters == null) {
+       this.parameters = new HashMap<String,String>();
+     }
+-    this.parameters.put(key, val);
++    this.parameters.put(org.apache.hive.common.util.HiveStringUtils.intern(key), org.apache.hive.common.util.HiveStringUtils.intern(val));
+   }
+ 
+   public Map<String,String> getParameters() {
+@@ -541,7 +541,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, SerDeInfo struct) t
+                 }
+                 iprot.readMapEnd();
+               }
+-              struct.setParametersIsSet(true);
++              struct.parameters = org.apache.hive.common.util.HiveStringUtils.intern(struct.parameters); struct.setParametersIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+             }
+@@ -653,7 +653,7 @@ public void read(org.apache.thrift.protocol.TProtocol prot, SerDeInfo struct) th
+             struct.parameters.put(_key112, _val113);
+           }
+         }
+-        struct.setParametersIsSet(true);
++        struct.parameters = org.apache.hive.common.util.HiveStringUtils.intern(struct.parameters); struct.setParametersIsSet(true);
+       }
+     }
+   }
+diff --git a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/StorageDescriptor.java b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/StorageDescriptor.java
+index b91cc1c..ecca896 100644
+--- a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/StorageDescriptor.java
++++ b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/StorageDescriptor.java
+@@ -571,7 +571,7 @@ public void putToParameters(String key, String val) {
+     if (this.parameters == null) {
+       this.parameters = new HashMap<String,String>();
+     }
+-    this.parameters.put(key, val);
++    this.parameters.put(org.apache.hive.common.util.HiveStringUtils.intern(key), org.apache.hive.common.util.HiveStringUtils.intern(val));
+   }
+ 
+   public Map<String,String> getParameters() {
+@@ -1417,7 +1417,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, StorageDescriptor s
+                 }
+                 iprot.readMapEnd();
+               }
+-              struct.setParametersIsSet(true);
++              struct.parameters = org.apache.hive.common.util.HiveStringUtils.intern(struct.parameters); struct.setParametersIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+             }
+@@ -1740,7 +1740,7 @@ public void read(org.apache.thrift.protocol.TProtocol prot, StorageDescriptor st
+             struct.parameters.put(_key188, _val189);
+           }
+         }
+-        struct.setParametersIsSet(true);
++        struct.parameters = org.apache.hive.common.util.HiveStringUtils.intern(struct.parameters); struct.setParametersIsSet(true);
+       }
+       if (incoming.get(10)) {
+         struct.skewedInfo = new SkewedInfo();
+diff --git a/metastore/src/main/resources/thrift-replacements.txt b/metastore/src/main/resources/thrift-replacements.txt
+index 528ed08..4b33243 100644
+--- a/metastore/src/main/resources/thrift-replacements.txt
++++ b/metastore/src/main/resources/thrift-replacements.txt
+@@ -58,3 +58,11 @@ this\.tableName\ \=\ other\.tableName;=this.tableName\ \=\ org.apache.hive.commo
+ __this__parameters_copy_key\ \=\ other_element_key;=__this__parameters_copy_key\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(other_element_key);
+ __this__parameters_copy_value\ \=\ other_element_value;=__this__parameters_copy_value\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(other_element_value);
+ __this_values\.add(other_element);=__this_values.add(org.apache.hive.common.util.HiveStringUtils.intern(other_element));
++
++# Fix methods in Partition.java that call Map.put(String key, String value)
++
++this\.parameters\.put\(key,\ val\);=this.parameters.put(org.apache.hive.common.util.HiveStringUtils.intern(key),\ org.apache.hive.common.util.HiveStringUtils.intern(val));
++
++# Fix the deserialization methods in Partitions.java: intern parameters after it's deserialized
++
++struct\.setParametersIsSet\(true\);=struct.parameters\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(struct.parameters);\ struct.setParametersIsSet(true);
+\ No newline at end of file
+-- 
+1.7.9.5
+

@@ -1,0 +1,93 @@
+From e71c23188862590dabd12a9ecbb54ef73dcfdc76 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Tue, 15 Aug 2017 18:17:23 +0200
+Subject: [PATCH 1272/1363] CDH-58869: HIVE-17305: New insert overwrite
+ dynamic partitions qtest need to have the golden
+ file regenerated (Barna Zsombor Klara via Peter
+ Vary)
+
+Change-Id: I86f6640fd6d8b5f670b3b705717bc2139b75f597
+---
+ .../conditional_task_optimization.q.out            |    2 ++
+ ...rt_overwrite_dynamic_partitions_move_only.q.out |   10 ++++++++++
+ .../clientpositive/parallel_directory_rename.q.out |    1 +
+ .../hadoop/hive/ql/session/LineageState.java       |    9 ++++++++-
+ 4 files changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/itests/hive-blobstore/src/test/results/clientpositive/conditional_task_optimization.q.out b/itests/hive-blobstore/src/test/results/clientpositive/conditional_task_optimization.q.out
+index 7b78daa..3a65f02 100644
+--- a/itests/hive-blobstore/src/test/results/clientpositive/conditional_task_optimization.q.out
++++ b/itests/hive-blobstore/src/test/results/clientpositive/conditional_task_optimization.q.out
+@@ -312,6 +312,7 @@ PREHOOK: Output: default@conditional
+ POSTHOOK: query: INSERT INTO TABLE conditional VALUES (2)
+ POSTHOOK: type: QUERY
+ POSTHOOK: Output: default@conditional
++POSTHOOK: Lineage: conditional.id EXPRESSION [(values__tmp__table__6)values__tmp__table__6.FieldSchema(name:tmp_values_col1, type:string, comment:), ]
+ PREHOOK: query: SELECT * FROM conditional
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@conditional
+@@ -418,6 +419,7 @@ PREHOOK: Output: default@conditional
+ POSTHOOK: query: INSERT OVERWRITE TABLE conditional VALUES (22)
+ POSTHOOK: type: QUERY
+ POSTHOOK: Output: default@conditional
++POSTHOOK: Lineage: conditional.id EXPRESSION [(values__tmp__table__8)values__tmp__table__8.FieldSchema(name:tmp_values_col1, type:string, comment:), ]
+ PREHOOK: query: SELECT * FROM conditional
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@conditional
+diff --git a/itests/hive-blobstore/src/test/results/clientpositive/insert_overwrite_dynamic_partitions_move_only.q.out b/itests/hive-blobstore/src/test/results/clientpositive/insert_overwrite_dynamic_partitions_move_only.q.out
+index 530c036..cc1d018 100644
+--- a/itests/hive-blobstore/src/test/results/clientpositive/insert_overwrite_dynamic_partitions_move_only.q.out
++++ b/itests/hive-blobstore/src/test/results/clientpositive/insert_overwrite_dynamic_partitions_move_only.q.out
+@@ -50,6 +50,16 @@ POSTHOOK: Output: default@s3_table_move@reported_date=2017-04-10/product_id=1000
+ POSTHOOK: Output: default@s3_table_move@reported_date=2017-04-10/product_id=10002
+ POSTHOOK: Output: default@s3_table_move@reported_date=2017-04-12/product_id=10001
+ POSTHOOK: Output: default@s3_table_move@reported_date=2017-04-12/product_id=10002
++POSTHOOK: Lineage: s3_table_move PARTITION(reported_date=2017-04-10,product_id=10000).event_name SIMPLE [(tmp_table_move)t.FieldSchema(name:name, type:string, comment:null), ]
++POSTHOOK: Lineage: s3_table_move PARTITION(reported_date=2017-04-10,product_id=10000).user_id SIMPLE [(tmp_table_move)t.FieldSchema(name:id, type:string, comment:null), ]
++POSTHOOK: Lineage: s3_table_move PARTITION(reported_date=2017-04-10,product_id=10001).event_name SIMPLE [(tmp_table_move)t.FieldSchema(name:name, type:string, comment:null), ]
++POSTHOOK: Lineage: s3_table_move PARTITION(reported_date=2017-04-10,product_id=10001).user_id SIMPLE [(tmp_table_move)t.FieldSchema(name:id, type:string, comment:null), ]
++POSTHOOK: Lineage: s3_table_move PARTITION(reported_date=2017-04-10,product_id=10002).event_name SIMPLE [(tmp_table_move)t.FieldSchema(name:name, type:string, comment:null), ]
++POSTHOOK: Lineage: s3_table_move PARTITION(reported_date=2017-04-10,product_id=10002).user_id SIMPLE [(tmp_table_move)t.FieldSchema(name:id, type:string, comment:null), ]
++POSTHOOK: Lineage: s3_table_move PARTITION(reported_date=2017-04-12,product_id=10001).event_name SIMPLE [(tmp_table_move)t.FieldSchema(name:name, type:string, comment:null), ]
++POSTHOOK: Lineage: s3_table_move PARTITION(reported_date=2017-04-12,product_id=10001).user_id SIMPLE [(tmp_table_move)t.FieldSchema(name:id, type:string, comment:null), ]
++POSTHOOK: Lineage: s3_table_move PARTITION(reported_date=2017-04-12,product_id=10002).event_name SIMPLE [(tmp_table_move)t.FieldSchema(name:name, type:string, comment:null), ]
++POSTHOOK: Lineage: s3_table_move PARTITION(reported_date=2017-04-12,product_id=10002).user_id SIMPLE [(tmp_table_move)t.FieldSchema(name:id, type:string, comment:null), ]
+ PREHOOK: query: select * from s3_table_move order by user_id
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@s3_table_move
+diff --git a/itests/hive-blobstore/src/test/results/clientpositive/parallel_directory_rename.q.out b/itests/hive-blobstore/src/test/results/clientpositive/parallel_directory_rename.q.out
+index 87e93d4..4a14567 100644
+--- a/itests/hive-blobstore/src/test/results/clientpositive/parallel_directory_rename.q.out
++++ b/itests/hive-blobstore/src/test/results/clientpositive/parallel_directory_rename.q.out
+@@ -18,6 +18,7 @@ PREHOOK: Output: default@parallel_directory_rename
+ POSTHOOK: query: INSERT INTO parallel_directory_rename VALUES (1), (10), (100), (1000)
+ POSTHOOK: type: QUERY
+ POSTHOOK: Output: default@parallel_directory_rename
++POSTHOOK: Lineage: parallel_directory_rename.value EXPRESSION [(values__tmp__table__1)values__tmp__table__1.FieldSchema(name:tmp_values_col1, type:string, comment:), ]
+ PREHOOK: query: SELECT * FROM parallel_directory_rename
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@parallel_directory_rename
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/session/LineageState.java b/ql/src/java/org/apache/hadoop/hive/ql/session/LineageState.java
+index 3030a4e..7e9e715 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/session/LineageState.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/session/LineageState.java
+@@ -75,8 +75,15 @@ public void mapDirToFop(Path dir, FileSinkOperator fop) {
+     dirToFop.put(dir, fop);
+   }
+ 
++  /**
++   * Update the path of the captured lineage information in case the
++   * conditional input path and the linked MoveWork were merged into one MoveWork.
++   * This should only happen for Blobstore systems with optimization turned on.
++   * @param newPath conditional input path
++   * @param oldPath path of the old linked MoveWork
++   */
+   public void updateDirToOpMap(Path newPath, Path oldPath) {
+-    FileSinkOperator op = dirToFop.remove(oldPath);
++    FileSinkOperator op = dirToFop.get(oldPath);
+     if (op != null) {
+       dirToFop.put(newPath, op);
+     }
+-- 
+1.7.9.5
+

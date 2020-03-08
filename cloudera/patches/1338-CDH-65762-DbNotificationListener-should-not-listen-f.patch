@@ -1,0 +1,125 @@
+From 31891fbf207f3a6a5d8ae3fead92f0c9ad919408 Mon Sep 17 00:00:00 2001
+From: Alexander Kolbasov <akolb@cloudera.com>
+Date: Sun, 11 Mar 2018 23:54:01 -0700
+Subject: [PATCH 1338/1363] CDH-65762: DbNotificationListener should not
+ listen for boring events: fixed tests.
+
+Change-Id: I47d594513750dfc5d0e2ac3fcc3a2d1a1f2d3f55
+---
+ .../listener/TestDbNotificationListener.java       |   16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/itests/hcatalog-unit/src/test/java/org/apache/hive/hcatalog/listener/TestDbNotificationListener.java b/itests/hcatalog-unit/src/test/java/org/apache/hive/hcatalog/listener/TestDbNotificationListener.java
+index a39ebe9..30a1d81 100644
+--- a/itests/hcatalog-unit/src/test/java/org/apache/hive/hcatalog/listener/TestDbNotificationListener.java
++++ b/itests/hcatalog-unit/src/test/java/org/apache/hive/hcatalog/listener/TestDbNotificationListener.java
+@@ -90,6 +90,7 @@
+ import org.junit.After;
+ import org.junit.Before;
+ import org.junit.BeforeClass;
++import org.junit.Ignore;
+ import org.junit.Test;
+ 
+ 
+@@ -347,6 +348,8 @@ public void alterTable() throws Exception {
+         new ArrayList<FieldSchema>(), emptyParameters, null, null, null);
+     msClient.createTable(table);
+ 
++    // Need to modify table location as well
++    sd.setLocation("file:/tmp/0");
+     cols.add(new FieldSchema("col2", "int", ""));
+     table = new Table("alttable", "default", "me", startTime, startTime, 0, sd,
+         new ArrayList<FieldSchema>(), emptyParameters, null, null, null);
+@@ -485,6 +488,9 @@ public void alterPartition() throws Exception {
+     Partition partition = new Partition(Arrays.asList("today"), "default", "alterparttable",
+         startTime, startTime, sd, emptyParameters);
+     msClient.add_partition(partition);
++    // Need to modify table location as well
++    sd.setLocation("file:/tmp/0");
++
+ 
+     Partition newPart = new Partition(Arrays.asList("today"), "default", "alterparttable",
+         startTime, startTime + 1, sd, emptyParameters);
+@@ -643,6 +649,7 @@ public void exchangePartition() throws Exception {
+     MockMetaStoreEventListener.popAndVerifyLastEventId(EventType.CREATE_TABLE, firstEventId + 1);
+   }
+ 
++  @Ignore
+   @Test
+   public void createFunction() throws Exception {
+     String funcName = "createFunction";
+@@ -688,6 +695,7 @@ public void createFunction() throws Exception {
+     assertEquals(1, rsp.getEventsSize());
+   }
+ 
++  @Ignore
+   @Test
+   public void dropFunction() throws Exception {
+     String funcName = "dropfunctiontest";
+@@ -736,6 +744,7 @@ public void dropFunction() throws Exception {
+     assertEquals(3, rsp.getEventsSize());
+   }
+ 
++  @Ignore
+   @Test
+   public void createIndex() throws Exception {
+     String indexName = "createIndex";
+@@ -791,6 +800,7 @@ public void createIndex() throws Exception {
+     assertEquals(3, rsp.getEventsSize());
+   }
+ 
++  @Ignore
+   @Test
+   public void dropIndex() throws Exception {
+     String indexName = "dropIndex";
+@@ -849,6 +859,7 @@ public void dropIndex() throws Exception {
+     assertEquals(6, rsp.getEventsSize());
+   }
+ 
++  @Ignore
+   @Test
+   public void alterIndex() throws Exception {
+     String indexName = "alterIndex";
+@@ -905,6 +916,7 @@ public void alterIndex() throws Exception {
+     assertEquals(4, rsp.getEventsSize());
+   }
+ 
++  @Ignore
+   @Test
+   public void insertTable() throws Exception {
+     List<FieldSchema> cols = new ArrayList<FieldSchema>();
+@@ -945,6 +957,7 @@ public void insertTable() throws Exception {
+     MockMetaStoreEventListener.popAndVerifyLastEventId(EventType.CREATE_TABLE, firstEventId + 1);
+   }
+ 
++  @Ignore
+   @Test
+   public void insertPartition() throws Exception {
+     List<FieldSchema> cols = new ArrayList<FieldSchema>();
+@@ -1048,6 +1061,7 @@ public boolean accept(NotificationEvent event) {
+     assertEquals(firstEventId + 1, rsp.getEvents().get(0).getEventId());
+   }
+ 
++  @Ignore
+   @Test
+   public void sqlInsertTable() throws Exception {
+ 
+@@ -1076,6 +1090,7 @@ public void sqlInsertTable() throws Exception {
+     assertEquals(HCatConstants.HCAT_DROP_TABLE_EVENT, event.getEventType());
+   }
+ 
++  @Ignore
+   @Test
+   public void sqlCTAS() throws Exception {
+ 
+@@ -1127,6 +1142,7 @@ public void sqlDb() throws Exception {
+     assertEquals(HCatConstants.HCAT_DROP_DATABASE_EVENT, event.getEventType());
+   }
+ 
++  @Ignore
+   @Test
+   public void sqlInsertPartition() throws Exception {
+     driver.run("create table sip (c int) partitioned by (ds string)");
+-- 
+1.7.9.5
+

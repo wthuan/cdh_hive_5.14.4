@@ -1,0 +1,100 @@
+From c0a0547b4cfb1ede9b63a94162139d077b881538 Mon Sep 17 00:00:00 2001
+From: Chao Sun <sunchao@apache.org>
+Date: Fri, 18 Nov 2016 09:24:42 -0800
+Subject: [PATCH 1249/1363] CDH-52626 HIVE-15233: UDF UUID() should be
+ non-deterministic (Chao Sun, reviewed by Xuefu
+ Zhang)
+
+(cherry picked from commit aebc9060bcf097407005997502e065feb7007c80)
+
+Change-Id: Idb9316c62ba049e54daad6f0c4c80419ffde95bb
+---
+ .../org/apache/hadoop/hive/ql/udf/UDFUUID.java     |    1 +
+ .../org/apache/hadoop/hive/ql/udf/TestUDFUUID.java |    5 ++++
+ ql/src/test/queries/clientpositive/uuid.q          |    5 ++++
+ ql/src/test/results/clientpositive/uuid.q.out      |   27 ++++++++++++++++++++
+ 4 files changed, 38 insertions(+)
+ create mode 100644 ql/src/test/queries/clientpositive/uuid.q
+ create mode 100644 ql/src/test/results/clientpositive/uuid.q.out
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/udf/UDFUUID.java b/ql/src/java/org/apache/hadoop/hive/ql/udf/UDFUUID.java
+index 1340ded..4999bb0 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/udf/UDFUUID.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/udf/UDFUUID.java
+@@ -36,6 +36,7 @@
+ + "  '0baf1f52-53df-487f-8292-99a03716b688'\n"
+ + "  > SELECT _FUNC_();\n"
+ + "  '36718a53-84f5-45d6-8796-4f79983ad49d'")
++@UDFType(deterministic = false)
+ public class UDFUUID extends UDF {
+   private final Text result = new Text();
+   /**
+diff --git a/ql/src/test/org/apache/hadoop/hive/ql/udf/TestUDFUUID.java b/ql/src/test/org/apache/hadoop/hive/ql/udf/TestUDFUUID.java
+index 5f04547..cf32c11 100644
+--- a/ql/src/test/org/apache/hadoop/hive/ql/udf/TestUDFUUID.java
++++ b/ql/src/test/org/apache/hadoop/hive/ql/udf/TestUDFUUID.java
+@@ -20,6 +20,8 @@
+ 
+ import junit.framework.TestCase;
+ 
++import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
++import org.apache.hadoop.hive.ql.udf.generic.GenericUDFBridge;
+ import org.junit.Test;
+ 
+ public class TestUDFUUID extends TestCase {
+@@ -34,5 +36,8 @@ public void testUUID() throws Exception {
+     
+     assertEquals(id1.length(), 36);
+     assertEquals(id2.length(), 36);
++
++    GenericUDFBridge bridge = new GenericUDFBridge("uuid", false, UDFUUID.class.getName());
++    assertFalse(FunctionRegistry.isDeterministic(bridge));
+   }
+ }
+diff --git a/ql/src/test/queries/clientpositive/uuid.q b/ql/src/test/queries/clientpositive/uuid.q
+new file mode 100644
+index 0000000..7d7d33f
+--- /dev/null
++++ b/ql/src/test/queries/clientpositive/uuid.q
+@@ -0,0 +1,5 @@
++CREATE TABLE test_uuid (key STRING, uid STRING);
++
++INSERT INTO TABLE test_uuid SELECT key, uuid() FROM src;
++
++SELECT COUNT(DISTINCT uid) FROM test_uuid;
+diff --git a/ql/src/test/results/clientpositive/uuid.q.out b/ql/src/test/results/clientpositive/uuid.q.out
+new file mode 100644
+index 0000000..a93e6eb
+--- /dev/null
++++ b/ql/src/test/results/clientpositive/uuid.q.out
+@@ -0,0 +1,27 @@
++PREHOOK: query: CREATE TABLE test_uuid (key STRING, uid STRING)
++PREHOOK: type: CREATETABLE
++PREHOOK: Output: database:default
++PREHOOK: Output: default@test_uuid
++POSTHOOK: query: CREATE TABLE test_uuid (key STRING, uid STRING)
++POSTHOOK: type: CREATETABLE
++POSTHOOK: Output: database:default
++POSTHOOK: Output: default@test_uuid
++PREHOOK: query: INSERT INTO TABLE test_uuid SELECT key, uuid() FROM src
++PREHOOK: type: QUERY
++PREHOOK: Input: default@src
++PREHOOK: Output: default@test_uuid
++POSTHOOK: query: INSERT INTO TABLE test_uuid SELECT key, uuid() FROM src
++POSTHOOK: type: QUERY
++POSTHOOK: Input: default@src
++POSTHOOK: Output: default@test_uuid
++POSTHOOK: Lineage: test_uuid.key SIMPLE [(src)src.FieldSchema(name:key, type:string, comment:default), ]
++POSTHOOK: Lineage: test_uuid.uid EXPRESSION []
++PREHOOK: query: SELECT COUNT(DISTINCT uid) FROM test_uuid
++PREHOOK: type: QUERY
++PREHOOK: Input: default@test_uuid
++#### A masked pattern was here ####
++POSTHOOK: query: SELECT COUNT(DISTINCT uid) FROM test_uuid
++POSTHOOK: type: QUERY
++POSTHOOK: Input: default@test_uuid
++#### A masked pattern was here ####
++500
+-- 
+1.7.9.5
+

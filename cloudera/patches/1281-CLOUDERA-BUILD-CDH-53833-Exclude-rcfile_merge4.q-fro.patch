@@ -1,0 +1,28 @@
+From 2701a1864ad18ffe6a047c0e0cc22ebf20820c35 Mon Sep 17 00:00:00 2001
+From: Marta Kuczora <kuczoram@cloudera.com>
+Date: Mon, 11 Sep 2017 11:24:17 +0200
+Subject: [PATCH 1281/1363] CLOUDERA-BUILD: CDH-53833: Exclude rcfile_merge4.q
+ from S3 tests This test is failing with the
+ blobstore optimization on, because of known
+ changes in the explain plan.
+
+Change-Id: Iec3c227e37c47143b055068f56190adcfebef1a7
+---
+ .../test/resources/testconfiguration.properties    |    1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/itests/src/test/resources/testconfiguration.properties b/itests/src/test/resources/testconfiguration.properties
+index e819b8b..801da6d 100644
+--- a/itests/src/test/resources/testconfiguration.properties
++++ b/itests/src/test/resources/testconfiguration.properties
+@@ -1391,7 +1391,6 @@ hdfs.blobstore.query.files=add_part_exist.q,\
+   rcfile_merge1.q,\
+   rcfile_merge2.q,\
+   rcfile_merge3.q,\
+-  rcfile_merge4.q,\
+   rcfile_null_value.q,\
+   rcfile_toleratecorruptions.q,\
+   rcfile_union.q,\
+-- 
+1.7.9.5
+

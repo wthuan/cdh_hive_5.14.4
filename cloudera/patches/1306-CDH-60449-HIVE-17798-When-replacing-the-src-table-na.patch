@@ -1,0 +1,32 @@
+From 13db7e81df1f12c31d47a92506c2e40cbc9dd864 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Mon, 16 Oct 2017 12:32:23 +0200
+Subject: [PATCH 1306/1363] CDH-60449 HIVE-17798: When replacing the src table
+ names in BeeLine testing, the table names
+ shouldn't be changed to lower case (Marta
+ Kuczora, via Peter Vary)
+
+(cherry picked from commit da304ef5cf60a84d7fbde13dcc63e5d54899b3a0)
+
+Change-Id: I802104af10f28c7a0b35ea760100e4c572907c84
+---
+ .../main/java/org/apache/hive/beeline/QFile.java   |    3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/itests/util/src/main/java/org/apache/hive/beeline/QFile.java b/itests/util/src/main/java/org/apache/hive/beeline/QFile.java
+index 02d3e4e..7ab52b3 100644
+--- a/itests/util/src/main/java/org/apache/hive/beeline/QFile.java
++++ b/itests/util/src/main/java/org/apache/hive/beeline/QFile.java
+@@ -175,8 +175,7 @@ public String getDebugHint() {
+    */
+   private String replaceTableNames(String source) {
+     for (String table : srcTables) {
+-      source = source.replaceAll("(?is)(\\s+)" + table + "([\\s;\\n\\)])", "$1default." + table
+-          + "$2");
++      source = source.replaceAll("(?is)(\\s+)(" + table + ")([\\s;\\n\\),])", "$1default.$2$3");
+     }
+     return source;
+   }
+-- 
+1.7.9.5
+

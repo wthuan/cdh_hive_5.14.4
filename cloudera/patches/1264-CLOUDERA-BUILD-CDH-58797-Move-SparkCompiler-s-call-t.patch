@@ -1,0 +1,1682 @@
+From 68c10fef1be04797f0ec2baa1c09352e92136513 Mon Sep 17 00:00:00 2001
+From: stakiar <stakiar@cloudera.com>
+Date: Sun, 3 Sep 2017 23:48:36 -0700
+Subject: [PATCH 1264/1363] CLOUDERA-BUILD: CDH-58797: Move SparkCompiler's
+ call to Constant Propagation into DPP specific
+ logic
+
+Change-Id: I871dfc226344e8bfff08e6a951af932b2f44075d
+---
+ .../hadoop/hive/ql/parse/spark/SparkCompiler.java  |   12 +--
+ .../spark/skewjoin_union_remove_1.q.out            |   16 ++--
+ .../spark/skewjoin_union_remove_2.q.out            |    6 +-
+ .../clientpositive/spark/skewjoinopt1.q.out        |   16 ++--
+ .../clientpositive/spark/skewjoinopt10.q.out       |    8 +-
+ .../clientpositive/spark/skewjoinopt11.q.out       |   16 ++--
+ .../clientpositive/spark/skewjoinopt12.q.out       |    4 +-
+ .../clientpositive/spark/skewjoinopt14.q.out       |    6 +-
+ .../clientpositive/spark/skewjoinopt15.q.out       |   16 ++--
+ .../clientpositive/spark/skewjoinopt16.q.out       |    4 +-
+ .../clientpositive/spark/skewjoinopt17.q.out       |   12 +--
+ .../clientpositive/spark/skewjoinopt19.q.out       |    8 +-
+ .../clientpositive/spark/skewjoinopt2.q.out        |   16 ++--
+ .../clientpositive/spark/skewjoinopt20.q.out       |    8 +-
+ .../clientpositive/spark/skewjoinopt3.q.out        |    8 +-
+ .../clientpositive/spark/skewjoinopt4.q.out        |   16 ++--
+ .../clientpositive/spark/skewjoinopt5.q.out        |    4 +-
+ .../clientpositive/spark/skewjoinopt6.q.out        |    4 +-
+ .../clientpositive/spark/skewjoinopt7.q.out        |    6 +-
+ .../clientpositive/spark/skewjoinopt8.q.out        |    6 +-
+ .../spark/spark_dynamic_partition_pruning.q.out    |   90 ++++++++++----------
+ ...park_vectorized_dynamic_partition_pruning.q.out |   86 +++++++++----------
+ 22 files changed, 184 insertions(+), 184 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SparkCompiler.java b/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SparkCompiler.java
+index aec4f4a..c72ee24 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SparkCompiler.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SparkCompiler.java
+@@ -128,12 +128,6 @@ protected void optimizeOperatorPlan(ParseContext pCtx, Set<ReadEntity> inputs,
+     // Remove cyclic dependencies for DPP
+     runCycleAnalysisForPartitionPruning(procCtx);
+ 
+-    // Re-run constant propagation so we fold any new constants introduced by the operator optimizers
+-    // Specifically necessary for DPP because we might have created lots of "and true and true" conditions
+-    if (procCtx.getConf().getBoolVar(HiveConf.ConfVars.HIVEOPTCONSTANTPROPAGATION)) {
+-      new ConstantPropagate(ConstantPropagateProcCtx.ConstantPropagateOption.SHORTCUT).transform(pCtx);
+-    }
+-
+     PERF_LOGGER.PerfLogEnd(CLASS_NAME, PerfLogger.SPARK_OPTIMIZE_OPERATOR_TREE);
+   }
+ 
+@@ -288,6 +282,12 @@ private void runDynamicPartitionPruning(OptimizeSparkProcContext procCtx)
+     List<Node> topNodes = new ArrayList<Node>();
+     topNodes.addAll(parseContext.getTopOps().values());
+     ogw.startWalking(topNodes, null);
++
++    // Re-run constant propagation so we fold any new constants introduced by the operator optimizers
++    // Specifically necessary for DPP because we might have created lots of "and true and true" conditions
++    if (procCtx.getConf().getBoolVar(HiveConf.ConfVars.HIVEOPTCONSTANTPROPAGATION)) {
++      new ConstantPropagate(ConstantPropagateProcCtx.ConstantPropagateOption.SHORTCUT).transform(parseContext);
++    }
+   }
+ 
+   private void runJoinOptimizations(OptimizeSparkProcContext procCtx) throws SemanticException {
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoin_union_remove_1.q.out b/ql/src/test/results/clientpositive/spark/skewjoin_union_remove_1.q.out
+index 07dc99c..1fde021 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoin_union_remove_1.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoin_union_remove_1.q.out
+@@ -86,7 +86,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> '2') and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not ((key = '2') or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -100,7 +100,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> '2') and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not ((key = '2') or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -221,7 +221,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key <> '2') and (key <> '3')) (type: boolean)
++                    predicate: (not ((key = '2') or (key = '3'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -235,7 +235,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key <> '2') and (key <> '3')) (type: boolean)
++                    predicate: (not ((key = '2') or (key = '3'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -368,7 +368,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> '2') and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not ((key = '2') or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -382,7 +382,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> '2') and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not ((key = '2') or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -525,7 +525,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key <> '2') and (key <> '3')) (type: boolean)
++                    predicate: (not ((key = '2') or (key = '3'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -539,7 +539,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key <> '2') and (key <> '3')) (type: boolean)
++                    predicate: (not ((key = '2') or (key = '3'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoin_union_remove_2.q.out b/ql/src/test/results/clientpositive/spark/skewjoin_union_remove_2.q.out
+index be6eda6..41a1ec6 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoin_union_remove_2.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoin_union_remove_2.q.out
+@@ -116,7 +116,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (((key <> '2') and (key <> '8')) and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not (((key = '2') or (key = '8')) or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -130,7 +130,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (((key <> '2') and (key <> '8')) and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not (((key = '2') or (key = '8')) or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -144,7 +144,7 @@ STAGE PLANS:
+                   alias: c
+                   Statistics: Num rows: 1 Data size: 20 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (((key <> '2') and (key <> '8')) and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not (((key = '2') or (key = '8')) or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 20 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt1.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt1.q.out
+index 92d0d8e..dbee49a 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt1.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt1.q.out
+@@ -86,7 +86,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> '2') and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not ((key = '2') or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -100,7 +100,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> '2') and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not ((key = '2') or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -221,7 +221,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key <> '2') and (key <> '3')) (type: boolean)
++                    predicate: (not ((key = '2') or (key = '3'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -235,7 +235,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key <> '2') and (key <> '3')) (type: boolean)
++                    predicate: (not ((key = '2') or (key = '3'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -357,7 +357,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> '2') and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not ((key = '2') or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -370,7 +370,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> '2') and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not ((key = '2') or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -490,7 +490,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key <> '2') and (key <> '3')) (type: boolean)
++                    predicate: (not ((key = '2') or (key = '3'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -503,7 +503,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key <> '2') and (key <> '3')) (type: boolean)
++                    predicate: (not ((key = '2') or (key = '3'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt10.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt10.q.out
+index b5d4703..e166bb3 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt10.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt10.q.out
+@@ -60,7 +60,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '8') (type: boolean)
++                    predicate: (key is not null and (key = '8')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -73,7 +73,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 6 Data size: 24 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '8') (type: boolean)
++                    predicate: (key is not null and (key = '8')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -87,7 +87,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '8')) (type: boolean)
++                    predicate: (key is not null and (not (key = '8'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -100,7 +100,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 6 Data size: 24 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '8')) (type: boolean)
++                    predicate: (key is not null and (not (key = '8'))) (type: boolean)
+                     Statistics: Num rows: 2 Data size: 8 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt11.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt11.q.out
+index 78ef1ef..23625f6 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt11.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt11.q.out
+@@ -68,7 +68,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -82,7 +82,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -96,7 +96,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -110,7 +110,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -124,7 +124,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -138,7 +138,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -152,7 +152,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -166,7 +166,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt12.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt12.q.out
+index a4717c1..ef01336 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt12.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt12.q.out
+@@ -84,7 +84,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key is not null and val is not null) and ((((key <> '2') or (val <> '12')) and ((key <> '8') or (val <> '18'))) and ((key <> '3') or (val <> '13')))) (type: boolean)
++                    predicate: ((key is not null and val is not null) and (not ((((key = '2') and (val = '12')) or ((key = '8') and (val = '18'))) or ((key = '3') and (val = '13'))))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+@@ -97,7 +97,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key is not null and val is not null) and ((((key <> '2') or (val <> '12')) and ((key <> '8') or (val <> '18'))) and ((key <> '3') or (val <> '13')))) (type: boolean)
++                    predicate: ((key is not null and val is not null) and (not ((((key = '2') and (val = '12')) or ((key = '8') and (val = '18'))) or ((key = '3') and (val = '13'))))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt14.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt14.q.out
+index f6c6e56..2e04a42 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt14.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt14.q.out
+@@ -95,7 +95,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -123,7 +123,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key is not null and val is not null) and (key <> '2')) (type: boolean)
++                    predicate: ((key is not null and val is not null) and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -137,7 +137,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt15.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt15.q.out
+index d1e3e8c..6f22d10 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt15.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt15.q.out
+@@ -118,7 +118,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 6 Data size: 24 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> 2) and (key <> 3))) (type: boolean)
++                    predicate: (key is not null and (not ((key = 2) or (key = 3)))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: int)
+@@ -132,7 +132,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 6 Data size: 24 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> 2) and (key <> 3))) (type: boolean)
++                    predicate: (key is not null and (not ((key = 2) or (key = 3)))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: int)
+@@ -253,7 +253,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 6 Data size: 24 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key <> 2) and (key <> 3)) (type: boolean)
++                    predicate: (not ((key = 2) or (key = 3))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: int)
+@@ -267,7 +267,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 6 Data size: 24 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key <> 2) and (key <> 3)) (type: boolean)
++                    predicate: (not ((key = 2) or (key = 3))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: int)
+@@ -389,7 +389,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 6 Data size: 24 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> 2) and (key <> 3))) (type: boolean)
++                    predicate: (key is not null and (not ((key = 2) or (key = 3)))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: int)
+@@ -402,7 +402,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 6 Data size: 24 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> 2) and (key <> 3))) (type: boolean)
++                    predicate: (key is not null and (not ((key = 2) or (key = 3)))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: int)
+@@ -522,7 +522,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 6 Data size: 24 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key <> 2) and (key <> 3)) (type: boolean)
++                    predicate: (not ((key = 2) or (key = 3))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: int)
+@@ -535,7 +535,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 6 Data size: 24 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key <> 2) and (key <> 3)) (type: boolean)
++                    predicate: (not ((key = 2) or (key = 3))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: int)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt16.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt16.q.out
+index 9c0c425..72fb5b7 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt16.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt16.q.out
+@@ -84,7 +84,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key is not null and val is not null) and (((key <> '2') or (val <> '12')) and (key <> '3'))) (type: boolean)
++                    predicate: ((key is not null and val is not null) and (not (((key = '2') and (val = '12')) or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+@@ -97,7 +97,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key is not null and val is not null) and (((key <> '2') or (val <> '12')) and (key <> '3'))) (type: boolean)
++                    predicate: ((key is not null and val is not null) and (not (((key = '2') and (val = '12')) or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt17.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt17.q.out
+index cf89a81..f679c4f 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt17.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt17.q.out
+@@ -58,7 +58,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -72,7 +72,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -86,7 +86,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -100,7 +100,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -271,7 +271,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key is not null and val is not null) and (((key <> '2') or (val <> '12')) and (key <> '2'))) (type: boolean)
++                    predicate: ((key is not null and val is not null) and (not (((key = '2') and (val = '12')) or (key = '2')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+@@ -284,7 +284,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key is not null and val is not null) and (((key <> '2') or (val <> '12')) and (key <> '2'))) (type: boolean)
++                    predicate: ((key is not null and val is not null) and (not (((key = '2') and (val = '12')) or (key = '2')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt19.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt19.q.out
+index b2dc2d7..37a59ec 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt19.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt19.q.out
+@@ -58,7 +58,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -72,7 +72,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -86,7 +86,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -100,7 +100,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt2.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt2.q.out
+index 96e7479..f15875f 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt2.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt2.q.out
+@@ -84,7 +84,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key is not null and val is not null) and ((((key <> '2') and (key <> '7')) and (key <> '3')) and (key <> '8'))) (type: boolean)
++                    predicate: ((key is not null and val is not null) and (not ((((key = '2') or (key = '7')) or (key = '3')) or (key = '8')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+@@ -97,7 +97,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key is not null and val is not null) and ((((key <> '2') and (key <> '7')) and (key <> '3')) and (key <> '8'))) (type: boolean)
++                    predicate: ((key is not null and val is not null) and (not ((((key = '2') or (key = '7')) or (key = '3')) or (key = '8')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+@@ -212,7 +212,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((((key <> '2') and (key <> '7')) and (key <> '3')) and (key <> '8')) (type: boolean)
++                    predicate: (not ((((key = '2') or (key = '7')) or (key = '3')) or (key = '8'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+@@ -225,7 +225,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((((key <> '2') and (key <> '7')) and (key <> '3')) and (key <> '8')) (type: boolean)
++                    predicate: (not ((((key = '2') or (key = '7')) or (key = '3')) or (key = '8'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+@@ -345,7 +345,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key is not null and val is not null) and ((((key <> '2') and (key <> '7')) and (key <> '3')) and (key <> '8'))) (type: boolean)
++                    predicate: ((key is not null and val is not null) and (not ((((key = '2') or (key = '7')) or (key = '3')) or (key = '8')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+@@ -358,7 +358,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((key is not null and val is not null) and ((((key <> '2') and (key <> '7')) and (key <> '3')) and (key <> '8'))) (type: boolean)
++                    predicate: ((key is not null and val is not null) and (not ((((key = '2') or (key = '7')) or (key = '3')) or (key = '8')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+@@ -488,7 +488,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((((key <> '2') and (key <> '7')) and (key <> '3')) and (key <> '8')) (type: boolean)
++                    predicate: (not ((((key = '2') or (key = '7')) or (key = '3')) or (key = '8'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+@@ -501,7 +501,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: ((((key <> '2') and (key <> '7')) and (key <> '3')) and (key <> '8')) (type: boolean)
++                    predicate: (not ((((key = '2') or (key = '7')) or (key = '3')) or (key = '8'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string), val (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt20.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt20.q.out
+index cf86ad8..7af4a1c 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt20.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt20.q.out
+@@ -58,7 +58,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -72,7 +72,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -86,7 +86,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -100,7 +100,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt3.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt3.q.out
+index 686c81e..5bf9107 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt3.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt3.q.out
+@@ -86,7 +86,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (((key <> '2') and (key <> '8')) and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not (((key = '2') or (key = '8')) or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -100,7 +100,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (((key <> '2') and (key <> '8')) and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not (((key = '2') or (key = '8')) or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -221,7 +221,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (((key <> '2') and (key <> '8')) and (key <> '3')) (type: boolean)
++                    predicate: (not (((key = '2') or (key = '8')) or (key = '3'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -235,7 +235,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (((key <> '2') and (key <> '8')) and (key <> '3')) (type: boolean)
++                    predicate: (not (((key = '2') or (key = '8')) or (key = '3'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt4.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt4.q.out
+index 167f979..e040d90 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt4.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt4.q.out
+@@ -56,7 +56,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -70,7 +70,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -84,7 +84,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -98,7 +98,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -191,7 +191,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -205,7 +205,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key = '2') (type: boolean)
++                    predicate: (key is not null and (key = '2')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -219,7 +219,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -233,7 +233,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (key <> '2')) (type: boolean)
++                    predicate: (key is not null and (not (key = '2'))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt5.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt5.q.out
+index 043eb53..0ed748a 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt5.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt5.q.out
+@@ -86,7 +86,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> '2') and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not ((key = '2') or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -100,7 +100,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> '2') and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not ((key = '2') or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt6.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt6.q.out
+index f6650ba..b784604 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt6.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt6.q.out
+@@ -86,7 +86,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (((key <> '2') and (key <> '8')) and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not (((key = '2') or (key = '8')) or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -100,7 +100,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (((key <> '2') and (key <> '8')) and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not (((key = '2') or (key = '8')) or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt7.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt7.q.out
+index be6eda6..41a1ec6 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt7.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt7.q.out
+@@ -116,7 +116,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (((key <> '2') and (key <> '8')) and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not (((key = '2') or (key = '8')) or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -130,7 +130,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (((key <> '2') and (key <> '8')) and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not (((key = '2') or (key = '8')) or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -144,7 +144,7 @@ STAGE PLANS:
+                   alias: c
+                   Statistics: Num rows: 1 Data size: 20 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and (((key <> '2') and (key <> '8')) and (key <> '3'))) (type: boolean)
++                    predicate: (key is not null and (not (((key = '2') or (key = '8')) or (key = '3')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 20 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/skewjoinopt8.q.out b/ql/src/test/results/clientpositive/spark/skewjoinopt8.q.out
+index 4f6d54d..7beaf69 100644
+--- a/ql/src/test/results/clientpositive/spark/skewjoinopt8.q.out
++++ b/ql/src/test/results/clientpositive/spark/skewjoinopt8.q.out
+@@ -114,7 +114,7 @@ STAGE PLANS:
+                   alias: a
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> '3') and (key <> '8'))) (type: boolean)
++                    predicate: (key is not null and (not ((key = '3') or (key = '8')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -128,7 +128,7 @@ STAGE PLANS:
+                   alias: b
+                   Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> '3') and (key <> '8'))) (type: boolean)
++                    predicate: (key is not null and (not ((key = '3') or (key = '8')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 30 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+@@ -142,7 +142,7 @@ STAGE PLANS:
+                   alias: c
+                   Statistics: Num rows: 1 Data size: 20 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (key is not null and ((key <> '3') and (key <> '8'))) (type: boolean)
++                    predicate: (key is not null and (not ((key = '3') or (key = '8')))) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 20 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: key (type: string)
+diff --git a/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning.q.out b/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning.q.out
+index 6cf70fe..6b19d2e 100644
+--- a/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning.q.out
++++ b/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning.q.out
+@@ -475,12 +475,12 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: day(ds) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: day(ds) (type: int)
+                       sort order: +
+                       Map-reduce partition columns: day(ds) (type: int)
+-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -503,7 +503,7 @@ STAGE PLANS:
+                 keys:
+                   0 day(ds) (type: int)
+                   1 day(ds) (type: int)
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -709,12 +709,12 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: abs(((- UDFToLong(concat(UDFToString(day(ds)), '0'))) + 10)) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: abs(((- UDFToLong(concat(UDFToString(day(ds)), '0'))) + 10)) (type: bigint)
+                       sort order: +
+                       Map-reduce partition columns: abs(((- UDFToLong(concat(UDFToString(day(ds)), '0'))) + 10)) (type: bigint)
+-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -737,7 +737,7 @@ STAGE PLANS:
+                 keys:
+                   0 abs(((- UDFToLong(concat(UDFToString(day(ds)), '0'))) + 10)) (type: bigint)
+                   1 abs(((- UDFToLong(concat(UDFToString(day(ds)), '0'))) + 10)) (type: bigint)
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -841,12 +841,12 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: CAST( UDFToShort(day(ds)) AS decimal(10,0)) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: CAST( UDFToShort(day(ds)) AS decimal(10,0)) (type: decimal(10,0))
+                       sort order: +
+                       Map-reduce partition columns: CAST( UDFToShort(day(ds)) AS decimal(10,0)) (type: decimal(10,0))
+-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -869,7 +869,7 @@ STAGE PLANS:
+                 keys:
+                   0 CAST( UDFToShort(day(ds)) AS decimal(10,0)) (type: decimal(10,0))
+                   1 CAST( day(ds) AS decimal(10,0)) (type: decimal(10,0))
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -1001,7 +1001,7 @@ STAGE PLANS:
+                     key expressions: ds (type: string)
+                     sort order: +
+                     Map-reduce partition columns: ds (type: string)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                     value expressions: hr (type: string)
+         Map 5 
+             Map Operator Tree:
+@@ -1040,12 +1040,12 @@ STAGE PLANS:
+                   0 ds (type: string)
+                   1 ds (type: string)
+                 outputColumnNames: _col3
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 2200 Data size: 23372 Basic stats: COMPLETE Column stats: NONE
+                 Reduce Output Operator
+                   key expressions: _col3 (type: string)
+                   sort order: +
+                   Map-reduce partition columns: _col3 (type: string)
+-                  Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                  Statistics: Num rows: 2200 Data size: 23372 Basic stats: COMPLETE Column stats: NONE
+         Reducer 3 
+             Reduce Operator Tree:
+               Join Operator
+@@ -1054,7 +1054,7 @@ STAGE PLANS:
+                 keys:
+                   0 _col3 (type: string)
+                   1 hr (type: string)
+-                Statistics: Num rows: 605 Data size: 6427 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 2420 Data size: 25709 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -1334,7 +1334,7 @@ STAGE PLANS:
+                     key expressions: ds (type: string), hr (type: string)
+                     sort order: ++
+                     Map-reduce partition columns: ds (type: string), hr (type: string)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -1357,7 +1357,7 @@ STAGE PLANS:
+                 keys:
+                   0 ds (type: string), hr (type: string)
+                   1 ds (type: string), hr (type: string)
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 2200 Data size: 23372 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -1808,12 +1808,12 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: UDFToDouble(hr) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: UDFToDouble(hr) (type: double)
+                       sort order: +
+                       Map-reduce partition columns: UDFToDouble(hr) (type: double)
+-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -1836,7 +1836,7 @@ STAGE PLANS:
+                 keys:
+                   0 UDFToDouble(hr) (type: double)
+                   1 UDFToDouble(UDFToInteger((hr / 2))) (type: double)
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -1940,12 +1940,12 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: (hr * 2) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: (hr * 2) (type: double)
+                       sort order: +
+                       Map-reduce partition columns: (hr * 2) (type: double)
+-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -1968,7 +1968,7 @@ STAGE PLANS:
+                 keys:
+                   0 (hr * 2) (type: double)
+                   1 hr (type: double)
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -2289,12 +2289,12 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: UDFToString((hr * 2)) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: UDFToString((hr * 2)) (type: string)
+                       sort order: +
+                       Map-reduce partition columns: UDFToString((hr * 2)) (type: string)
+-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -2317,7 +2317,7 @@ STAGE PLANS:
+                 keys:
+                   0 UDFToString((hr * 2)) (type: string)
+                   1 UDFToString(hr) (type: string)
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -2742,7 +2742,7 @@ STAGE PLANS:
+                     key expressions: ds (type: string), hr (type: string)
+                     sort order: ++
+                     Map-reduce partition columns: ds (type: string), hr (type: string)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -2766,12 +2766,12 @@ STAGE PLANS:
+                   0 ds (type: string), hr (type: string)
+                   1 ds (type: string), hr (type: string)
+                 outputColumnNames: _col2, _col3, _col7, _col9
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 2200 Data size: 23372 Basic stats: COMPLETE Column stats: NONE
+                 Filter Operator
+                   predicate: ((_col2 = _col7) and (_col3 = _col9)) (type: boolean)
+-                  Statistics: Num rows: 137 Data size: 1455 Basic stats: COMPLETE Column stats: NONE
++                  Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
+                   Select Operator
+-                    Statistics: Num rows: 137 Data size: 1455 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
+                     Group By Operator
+                       aggregations: count()
+                       mode: hash
+@@ -3177,7 +3177,7 @@ STAGE PLANS:
+                     key expressions: ds (type: string)
+                     sort order: +
+                     Map-reduce partition columns: ds (type: string)
+-                    Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 5 
+             Map Operator Tree:
+                 TableScan
+@@ -3214,12 +3214,12 @@ STAGE PLANS:
+                 keys:
+                   0 ds (type: string)
+                   1 ds (type: string)
+-                Statistics: Num rows: 275 Data size: 2921 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Reduce Output Operator
+                   key expressions: '11' (type: string)
+                   sort order: +
+                   Map-reduce partition columns: '11' (type: string)
+-                  Statistics: Num rows: 275 Data size: 2921 Basic stats: COMPLETE Column stats: NONE
++                  Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+         Reducer 3 
+             Reduce Operator Tree:
+               Join Operator
+@@ -3228,7 +3228,7 @@ STAGE PLANS:
+                 keys:
+                   0 _col3 (type: string)
+                   1 hr (type: string)
+-                Statistics: Num rows: 302 Data size: 3213 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1210 Data size: 12854 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -4516,7 +4516,7 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: day(ds) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Map Join Operator
+                       condition map:
+                            Inner Join 0 to 1
+@@ -4525,7 +4525,7 @@ STAGE PLANS:
+                         1 day(ds) (type: int)
+                       input vertices:
+                         1 Map 3
+-                      Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                       Group By Operator
+                         aggregations: count()
+                         mode: hash
+@@ -4674,7 +4674,7 @@ STAGE PLANS:
+                     outputColumnNames: _col3
+                     input vertices:
+                       1 Map 3
+-                    Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 2200 Data size: 23372 Basic stats: COMPLETE Column stats: NONE
+                     Map Join Operator
+                       condition map:
+                            Inner Join 0 to 1
+@@ -4683,7 +4683,7 @@ STAGE PLANS:
+                         1 hr (type: string)
+                       input vertices:
+                         1 Map 4
+-                      Statistics: Num rows: 605 Data size: 6427 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 2420 Data size: 25709 Basic stats: COMPLETE Column stats: NONE
+                       Group By Operator
+                         aggregations: count()
+                         mode: hash
+@@ -4829,7 +4829,7 @@ STAGE PLANS:
+                       1 ds (type: string), hr (type: string)
+                     input vertices:
+                       1 Map 3
+-                    Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 2200 Data size: 23372 Basic stats: COMPLETE Column stats: NONE
+                     Group By Operator
+                       aggregations: count()
+                       mode: hash
+@@ -5068,7 +5068,7 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: UDFToDouble(hr) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Map Join Operator
+                       condition map:
+                            Inner Join 0 to 1
+@@ -5077,7 +5077,7 @@ STAGE PLANS:
+                         1 UDFToDouble(UDFToInteger((hr / 2))) (type: double)
+                       input vertices:
+                         1 Map 3
+-                      Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                       Group By Operator
+                         aggregations: count()
+                         mode: hash
+@@ -5188,7 +5188,7 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: (hr * 2) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Map Join Operator
+                       condition map:
+                            Inner Join 0 to 1
+@@ -5197,7 +5197,7 @@ STAGE PLANS:
+                         1 hr (type: double)
+                       input vertices:
+                         1 Map 3
+-                      Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                       Group By Operator
+                         aggregations: count()
+                         mode: hash
+@@ -5755,7 +5755,7 @@ STAGE PLANS:
+                       1 ds (type: string)
+                     input vertices:
+                       1 Map 3
+-                    Statistics: Num rows: 275 Data size: 2921 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                     Map Join Operator
+                       condition map:
+                            Inner Join 0 to 1
+@@ -5764,7 +5764,7 @@ STAGE PLANS:
+                         1 '11' (type: string)
+                       input vertices:
+                         1 Map 4
+-                      Statistics: Num rows: 302 Data size: 3213 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1210 Data size: 12854 Basic stats: COMPLETE Column stats: NONE
+                       Group By Operator
+                         aggregations: count()
+                         mode: hash
+@@ -6315,7 +6315,7 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 4000 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: UDFToDouble(hr) is not null (type: boolean)
+-                    Statistics: Num rows: 250 Data size: 500 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 2000 Basic stats: COMPLETE Column stats: NONE
+                     Map Join Operator
+                       condition map:
+                            Inner Join 0 to 1
+@@ -6324,7 +6324,7 @@ STAGE PLANS:
+                         1 ds (type: string), UDFToDouble(hr) (type: double)
+                       input vertices:
+                         1 Map 3
+-                      Statistics: Num rows: 275 Data size: 550 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1100 Data size: 2200 Basic stats: COMPLETE Column stats: NONE
+                       Group By Operator
+                         aggregations: count()
+                         mode: hash
+diff --git a/ql/src/test/results/clientpositive/spark/spark_vectorized_dynamic_partition_pruning.q.out b/ql/src/test/results/clientpositive/spark/spark_vectorized_dynamic_partition_pruning.q.out
+index e490ac4..6b90556 100644
+--- a/ql/src/test/results/clientpositive/spark/spark_vectorized_dynamic_partition_pruning.q.out
++++ b/ql/src/test/results/clientpositive/spark/spark_vectorized_dynamic_partition_pruning.q.out
+@@ -482,12 +482,12 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: day(ds) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: day(ds) (type: int)
+                       sort order: +
+                       Map-reduce partition columns: day(ds) (type: int)
+-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -511,7 +511,7 @@ STAGE PLANS:
+                 keys:
+                   0 day(ds) (type: int)
+                   1 day(ds) (type: int)
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -721,12 +721,12 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: abs(((- UDFToLong(concat(UDFToString(day(ds)), '0'))) + 10)) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: abs(((- UDFToLong(concat(UDFToString(day(ds)), '0'))) + 10)) (type: bigint)
+                       sort order: +
+                       Map-reduce partition columns: abs(((- UDFToLong(concat(UDFToString(day(ds)), '0'))) + 10)) (type: bigint)
+-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -750,7 +750,7 @@ STAGE PLANS:
+                 keys:
+                   0 abs(((- UDFToLong(concat(UDFToString(day(ds)), '0'))) + 10)) (type: bigint)
+                   1 abs(((- UDFToLong(concat(UDFToString(day(ds)), '0'))) + 10)) (type: bigint)
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -856,12 +856,12 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: CAST( UDFToShort(day(ds)) AS decimal(10,0)) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: CAST( UDFToShort(day(ds)) AS decimal(10,0)) (type: decimal(10,0))
+                       sort order: +
+                       Map-reduce partition columns: CAST( UDFToShort(day(ds)) AS decimal(10,0)) (type: decimal(10,0))
+-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -885,7 +885,7 @@ STAGE PLANS:
+                 keys:
+                   0 CAST( UDFToShort(day(ds)) AS decimal(10,0)) (type: decimal(10,0))
+                   1 CAST( day(ds) AS decimal(10,0)) (type: decimal(10,0))
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -1019,7 +1019,7 @@ STAGE PLANS:
+                     key expressions: ds (type: string)
+                     sort order: +
+                     Map-reduce partition columns: ds (type: string)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                     value expressions: hr (type: string)
+         Map 5 
+             Map Operator Tree:
+@@ -1059,12 +1059,12 @@ STAGE PLANS:
+                   0 ds (type: string)
+                   1 ds (type: string)
+                 outputColumnNames: _col3
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 2200 Data size: 23372 Basic stats: COMPLETE Column stats: NONE
+                 Reduce Output Operator
+                   key expressions: _col3 (type: string)
+                   sort order: +
+                   Map-reduce partition columns: _col3 (type: string)
+-                  Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                  Statistics: Num rows: 2200 Data size: 23372 Basic stats: COMPLETE Column stats: NONE
+         Reducer 3 
+             Reduce Operator Tree:
+               Join Operator
+@@ -1073,7 +1073,7 @@ STAGE PLANS:
+                 keys:
+                   0 _col3 (type: string)
+                   1 hr (type: string)
+-                Statistics: Num rows: 605 Data size: 6427 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 2420 Data size: 25709 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -1356,7 +1356,7 @@ STAGE PLANS:
+                     key expressions: ds (type: string), hr (type: string)
+                     sort order: ++
+                     Map-reduce partition columns: ds (type: string), hr (type: string)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -1379,7 +1379,7 @@ STAGE PLANS:
+                 keys:
+                   0 ds (type: string), hr (type: string)
+                   1 ds (type: string), hr (type: string)
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 2200 Data size: 23372 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -1837,12 +1837,12 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: UDFToDouble(hr) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: UDFToDouble(hr) (type: double)
+                       sort order: +
+                       Map-reduce partition columns: UDFToDouble(hr) (type: double)
+-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -1865,7 +1865,7 @@ STAGE PLANS:
+                 keys:
+                   0 UDFToDouble(hr) (type: double)
+                   1 UDFToDouble(UDFToInteger((hr / 2))) (type: double)
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -1970,12 +1970,12 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: (hr * 2) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: (hr * 2) (type: double)
+                       sort order: +
+                       Map-reduce partition columns: (hr * 2) (type: double)
+-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -1998,7 +1998,7 @@ STAGE PLANS:
+                 keys:
+                   0 (hr * 2) (type: double)
+                   1 hr (type: double)
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -2322,12 +2322,12 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: UDFToString((hr * 2)) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Reduce Output Operator
+                       key expressions: UDFToString((hr * 2)) (type: string)
+                       sort order: +
+                       Map-reduce partition columns: UDFToString((hr * 2)) (type: string)
+-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -2350,7 +2350,7 @@ STAGE PLANS:
+                 keys:
+                   0 UDFToString((hr * 2)) (type: string)
+                   1 UDFToString(hr) (type: string)
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -2779,7 +2779,7 @@ STAGE PLANS:
+                     key expressions: ds (type: string), hr (type: string)
+                     sort order: ++
+                     Map-reduce partition columns: ds (type: string), hr (type: string)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+         Map 4 
+             Map Operator Tree:
+                 TableScan
+@@ -2803,12 +2803,12 @@ STAGE PLANS:
+                   0 ds (type: string), hr (type: string)
+                   1 ds (type: string), hr (type: string)
+                 outputColumnNames: _col2, _col3, _col7, _col9
+-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 2200 Data size: 23372 Basic stats: COMPLETE Column stats: NONE
+                 Filter Operator
+                   predicate: ((_col2 = _col7) and (_col3 = _col9)) (type: boolean)
+-                  Statistics: Num rows: 137 Data size: 1455 Basic stats: COMPLETE Column stats: NONE
++                  Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
+                   Select Operator
+-                    Statistics: Num rows: 137 Data size: 1455 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
+                     Group By Operator
+                       aggregations: count()
+                       mode: hash
+@@ -3223,7 +3223,7 @@ STAGE PLANS:
+                     key expressions: ds (type: string)
+                     sort order: +
+                     Map-reduce partition columns: ds (type: string)
+-                    Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+         Map 5 
+             Map Operator Tree:
+                 TableScan
+@@ -3261,12 +3261,12 @@ STAGE PLANS:
+                 keys:
+                   0 ds (type: string)
+                   1 ds (type: string)
+-                Statistics: Num rows: 275 Data size: 2921 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                 Reduce Output Operator
+                   key expressions: '11' (type: string)
+                   sort order: +
+                   Map-reduce partition columns: '11' (type: string)
+-                  Statistics: Num rows: 275 Data size: 2921 Basic stats: COMPLETE Column stats: NONE
++                  Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+         Reducer 3 
+             Reduce Operator Tree:
+               Join Operator
+@@ -3275,7 +3275,7 @@ STAGE PLANS:
+                 keys:
+                   0 _col3 (type: string)
+                   1 hr (type: string)
+-                Statistics: Num rows: 302 Data size: 3213 Basic stats: COMPLETE Column stats: NONE
++                Statistics: Num rows: 1210 Data size: 12854 Basic stats: COMPLETE Column stats: NONE
+                 Group By Operator
+                   aggregations: count()
+                   mode: hash
+@@ -4571,7 +4571,7 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: day(ds) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Map Join Operator
+                       condition map:
+                            Inner Join 0 to 1
+@@ -4580,7 +4580,7 @@ STAGE PLANS:
+                         1 day(ds) (type: int)
+                       input vertices:
+                         1 Map 3
+-                      Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                       Group By Operator
+                         aggregations: count()
+                         mode: hash
+@@ -4730,7 +4730,7 @@ STAGE PLANS:
+                     outputColumnNames: _col3
+                     input vertices:
+                       1 Map 3
+-                    Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 2200 Data size: 23372 Basic stats: COMPLETE Column stats: NONE
+                     Map Join Operator
+                       condition map:
+                            Inner Join 0 to 1
+@@ -4739,7 +4739,7 @@ STAGE PLANS:
+                         1 hr (type: string)
+                       input vertices:
+                         1 Map 4
+-                      Statistics: Num rows: 605 Data size: 6427 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 2420 Data size: 25709 Basic stats: COMPLETE Column stats: NONE
+                       Group By Operator
+                         aggregations: count()
+                         mode: hash
+@@ -4886,7 +4886,7 @@ STAGE PLANS:
+                       1 ds (type: string), hr (type: string)
+                     input vertices:
+                       1 Map 3
+-                    Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 2200 Data size: 23372 Basic stats: COMPLETE Column stats: NONE
+                     Group By Operator
+                       aggregations: count()
+                       mode: hash
+@@ -5108,7 +5108,7 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: UDFToDouble(hr) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Map Join Operator
+                       condition map:
+                            Inner Join 0 to 1
+@@ -5117,7 +5117,7 @@ STAGE PLANS:
+                         1 UDFToDouble(UDFToInteger((hr / 2))) (type: double)
+                       input vertices:
+                         1 Map 3
+-                      Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                       Group By Operator
+                         aggregations: count()
+                         mode: hash
+@@ -5229,7 +5229,7 @@ STAGE PLANS:
+                   Statistics: Num rows: 2000 Data size: 21248 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+                     predicate: (hr * 2) is not null (type: boolean)
+-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                     Map Join Operator
+                       condition map:
+                            Inner Join 0 to 1
+@@ -5238,7 +5238,7 @@ STAGE PLANS:
+                         1 hr (type: double)
+                       input vertices:
+                         1 Map 3
+-                      Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                       Group By Operator
+                         aggregations: count()
+                         mode: hash
+@@ -5803,7 +5803,7 @@ STAGE PLANS:
+                       1 ds (type: string)
+                     input vertices:
+                       1 Map 3
+-                    Statistics: Num rows: 275 Data size: 2921 Basic stats: COMPLETE Column stats: NONE
++                    Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
+                     Map Join Operator
+                       condition map:
+                            Inner Join 0 to 1
+@@ -5812,7 +5812,7 @@ STAGE PLANS:
+                         1 '11' (type: string)
+                       input vertices:
+                         1 Map 4
+-                      Statistics: Num rows: 302 Data size: 3213 Basic stats: COMPLETE Column stats: NONE
++                      Statistics: Num rows: 1210 Data size: 12854 Basic stats: COMPLETE Column stats: NONE
+                       Group By Operator
+                         aggregations: count()
+                         mode: hash
+-- 
+1.7.9.5
+

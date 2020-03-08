@@ -1,0 +1,100 @@
+From 526ca03b23635893c31b56a48c31348b0c342960 Mon Sep 17 00:00:00 2001
+From: Sahil Takiar <takiar.sahil@gmail.com>
+Date: Fri, 28 Jul 2017 12:57:51 -0700
+Subject: [PATCH 1255/1363] CDH-58378: HIVE-17192: Add InterfaceAudience and
+ InterfaceStability annotations for Stats
+ Collection APIs (Sahil Takiar, reviewed by Aihua
+ Xu)
+
+(cherry picked from commit 9e95bd654ab0387629edfdbb1ca2ba6c57030eb1)
+
+Change-Id: I188692fc2c000eb302c01a3edd045d50b1a2dbdb
+---
+ .../hadoop/hive/ql/stats/ClientStatsPublisher.java |    6 ++++++
+ .../hadoop/hive/ql/stats/StatsAggregator.java      |    6 +++++-
+ .../hive/ql/stats/StatsCollectionContext.java      |    5 +++++
+ .../hadoop/hive/ql/stats/StatsPublisher.java       |    6 +++++-
+ 4 files changed, 21 insertions(+), 2 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/stats/ClientStatsPublisher.java b/ql/src/java/org/apache/hadoop/hive/ql/stats/ClientStatsPublisher.java
+index 2480f03..b27e9f4 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/stats/ClientStatsPublisher.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/stats/ClientStatsPublisher.java
+@@ -18,8 +18,14 @@
+ 
+ package org.apache.hadoop.hive.ql.stats;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ import java.util.Map;
+ 
++
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface ClientStatsPublisher {
+ 
+   public void run(Map<String, Double> counterValues, String jobID);
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsAggregator.java b/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsAggregator.java
+index b115daf..afbb27d 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsAggregator.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsAggregator.java
+@@ -18,10 +18,14 @@
+ 
+ package org.apache.hadoop.hive.ql.stats;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * An interface for any possible implementation for gathering statistics.
+  */
+-
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface StatsAggregator {
+ 
+   /**
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsCollectionContext.java b/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsCollectionContext.java
+index ae6f2ac..76a4d50 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsCollectionContext.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsCollectionContext.java
+@@ -23,8 +23,13 @@
+ import java.util.List;
+ 
+ import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.ql.exec.Task;
+ 
++
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class StatsCollectionContext {
+ 
+   private final Configuration hiveConf;
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsPublisher.java b/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsPublisher.java
+index 3631b83..7e01eff 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsPublisher.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsPublisher.java
+@@ -18,12 +18,16 @@
+ 
+ package org.apache.hadoop.hive.ql.stats;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ import java.util.Map;
+ 
+ /**
+  * An interface for any possible implementation for publishing statics.
+  */
+-
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface StatsPublisher {
+ 
+   /**
+-- 
+1.7.9.5
+

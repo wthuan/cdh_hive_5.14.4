@@ -1,0 +1,37 @@
+From c7454d52849bafe439bfc55ed34d81fdbd864ffc Mon Sep 17 00:00:00 2001
+From: zsomborklara <zsombor.klara@cloudera.com>
+Date: Mon, 7 Aug 2017 16:58:34 +0200
+Subject: [PATCH 1237/1363] CLOUDERA-BUILD: CDH-56385: Intermittent Hive On S3
+ test failures
+
+Change-Id: I76fa9e17676cdcb594c273c9ee246966ef808733
+---
+ .../test/resources/hdfs-blobstore/hive-site.xml    |   12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/itests/hive-blobstore/src/test/resources/hdfs-blobstore/hive-site.xml b/itests/hive-blobstore/src/test/resources/hdfs-blobstore/hive-site.xml
+index 46ae3dc..9aa0e74 100644
+--- a/itests/hive-blobstore/src/test/resources/hdfs-blobstore/hive-site.xml
++++ b/itests/hive-blobstore/src/test/resources/hdfs-blobstore/hive-site.xml
+@@ -19,6 +19,18 @@
+ 
+ <configuration>
+   <property>
++    <name>fs.s3a.metadatastore.impl</name>
++    <value>org.apache.hadoop.fs.s3a.s3guard.NullMetadataStore</value>
++  </property>
++ <property>
++    <name>fs.s3a.s3guard.ddb.region</name>
++    <value>us-west-1</value>
++  </property> 
++ <property>
++   <name>fs.s3a.s3guard.ddb.table.create</name>
++   <value>true</value>
++ </property>
++  <property>
+     <name>hive.in.test</name>
+     <value>true</value>
+     <description>Internal marker for test. Used for masking env-dependent values</description>
+-- 
+1.7.9.5
+

@@ -1,0 +1,32 @@
+From df51db8dae0be8449224fa31113897abc1a2337b Mon Sep 17 00:00:00 2001
+From: stakiar <stakiar@cloudera.com>
+Date: Mon, 7 Aug 2017 16:20:12 -0700
+Subject: [PATCH 1229/1363] CLOUDERA-BUILD: CDH-56414: Removing disclaimers
+ from VectorSparkPartitionPruningSinkOperator now
+ that it has been tested on a CDH cluster
+
+Change-Id: Ibca3534a977a6930b1a52d413a8b0a3104c7ad58
+---
+ .../VectorSparkPartitionPruningSinkOperator.java   |    5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorSparkPartitionPruningSinkOperator.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorSparkPartitionPruningSinkOperator.java
+index 9a4aaa7..210ce11 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorSparkPartitionPruningSinkOperator.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorSparkPartitionPruningSinkOperator.java
+@@ -35,11 +35,8 @@
+  * Vectorized version for SparkPartitionPruningSinkOperator.
+  * Forked from VectorAppMasterEventOperator.
+  *
+- * THIS CLASS IS NOT READY FOR USE IN PRODUCTION
+- *
+  * The vectorization APIs between CDH and Apache Hive are very different, so backporting this class required rewriting
+- * a lot of it. The rewrite was done on a best effort basis and has not been tested. Most of the rewrite is copied from
+- * {@link VectorAppMasterEventOperator}.
++ * a lot of it. Most of the rewrite is copied from {@link VectorAppMasterEventOperator}.
+  **/
+ public class VectorSparkPartitionPruningSinkOperator extends SparkPartitionPruningSinkOperator {
+ 
+-- 
+1.7.9.5
+

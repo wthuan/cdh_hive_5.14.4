@@ -1,0 +1,93 @@
+From 63b5d03d149d4f11c1b5d4b7ad682e68124227a9 Mon Sep 17 00:00:00 2001
+From: Janaki Lahorani <janaki@cloudera.com>
+Date: Tue, 25 Jul 2017 08:59:28 -0700
+Subject: [PATCH 1207/1363] CLOUDERA-BUILD: CDH-39630: Update out files with
+ updated error message.
+
+Also removed an extra new line from MoveTask.java.
+
+Change-Id: Ib9434c580139d6f20a50bfba3537a486e1c5d45f
+---
+ .../org/apache/hadoop/hive/ql/exec/MoveTask.java   |    2 +-
+ .../results/clientnegative/archive_corrupt.q.out   |    4 +++-
+ .../test/results/clientnegative/dyn_part_max.q.out |    3 +--
+ .../clientnegative/load_wrong_fileformat.q.out     |    4 +++-
+ .../load_wrong_fileformat_rc_seq.q.out             |    4 +++-
+ .../load_wrong_fileformat_txt_seq.q.out            |    4 +++-
+ 6 files changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/MoveTask.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/MoveTask.java
+index 0e78ad8..b93203d 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/MoveTask.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/MoveTask.java
+@@ -507,7 +507,7 @@ public int execute(DriverContext driverContext) {
+         } else {
+           console.printError("Failed with exception " + he.getMessage()
+               + "\nRemote Exception: " + he.getRemoteErrorMsg());
+-          console.printInfo("\n", StringUtils.stringifyException(he),false);
++          console.printInfo("", StringUtils.stringifyException(he),false);
+         }
+       }
+ 
+diff --git a/ql/src/test/results/clientnegative/archive_corrupt.q.out b/ql/src/test/results/clientnegative/archive_corrupt.q.out
+index 81ed7aa..08b650c 100644
+--- a/ql/src/test/results/clientnegative/archive_corrupt.q.out
++++ b/ql/src/test/results/clientnegative/archive_corrupt.q.out
+@@ -21,4 +21,6 @@ PREHOOK: type: LOAD
+ #### A masked pattern was here ####
+ PREHOOK: Output: default@tstsrcpart
+ Failed with exception Wrong file format. Please check the file's format.
+-FAILED: Execution Error, return code 1 from org.apache.hadoop.hive.ql.exec.MoveTask
++Remote Exception: null
++
++FAILED: Execution Error, return code 20013 from org.apache.hadoop.hive.ql.exec.MoveTask. Wrong file format. Please check the file's format.
+diff --git a/ql/src/test/results/clientnegative/dyn_part_max.q.out b/ql/src/test/results/clientnegative/dyn_part_max.q.out
+index d69c7d1..7de4998 100644
+--- a/ql/src/test/results/clientnegative/dyn_part_max.q.out
++++ b/ql/src/test/results/clientnegative/dyn_part_max.q.out
+@@ -19,5 +19,4 @@ LIMIT 50
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@src
+ PREHOOK: Output: default@max_parts
+-Failed with exception Number of dynamic partitions created is 49, which is more than 10. To solve this try to set hive.exec.max.dynamic.partitions to at least 49.
+-FAILED: Execution Error, return code 1 from org.apache.hadoop.hive.ql.exec.MoveTask
++FAILED: Execution Error, return code 1 from org.apache.hadoop.hive.ql.exec.MoveTask. Number of dynamic partitions created is 49, which is more than 10. To solve this try to set hive.exec.max.dynamic.partitions to at least 49.
+diff --git a/ql/src/test/results/clientnegative/load_wrong_fileformat.q.out b/ql/src/test/results/clientnegative/load_wrong_fileformat.q.out
+index 9c637ac..4333d99 100644
+--- a/ql/src/test/results/clientnegative/load_wrong_fileformat.q.out
++++ b/ql/src/test/results/clientnegative/load_wrong_fileformat.q.out
+@@ -11,4 +11,6 @@ PREHOOK: type: LOAD
+ #### A masked pattern was here ####
+ PREHOOK: Output: default@load_wrong_fileformat_t1
+ Failed with exception Wrong file format. Please check the file's format.
+-FAILED: Execution Error, return code 1 from org.apache.hadoop.hive.ql.exec.MoveTask
++Remote Exception: null
++
++FAILED: Execution Error, return code 20013 from org.apache.hadoop.hive.ql.exec.MoveTask. Wrong file format. Please check the file's format.
+diff --git a/ql/src/test/results/clientnegative/load_wrong_fileformat_rc_seq.q.out b/ql/src/test/results/clientnegative/load_wrong_fileformat_rc_seq.q.out
+index ac4221d..25e3a954 100644
+--- a/ql/src/test/results/clientnegative/load_wrong_fileformat_rc_seq.q.out
++++ b/ql/src/test/results/clientnegative/load_wrong_fileformat_rc_seq.q.out
+@@ -11,4 +11,6 @@ PREHOOK: type: LOAD
+ #### A masked pattern was here ####
+ PREHOOK: Output: default@t1
+ Failed with exception Wrong file format. Please check the file's format.
+-FAILED: Execution Error, return code 1 from org.apache.hadoop.hive.ql.exec.MoveTask
++Remote Exception: null
++
++FAILED: Execution Error, return code 20013 from org.apache.hadoop.hive.ql.exec.MoveTask. Wrong file format. Please check the file's format.
+diff --git a/ql/src/test/results/clientnegative/load_wrong_fileformat_txt_seq.q.out b/ql/src/test/results/clientnegative/load_wrong_fileformat_txt_seq.q.out
+index 0f2e133..e6225d4 100644
+--- a/ql/src/test/results/clientnegative/load_wrong_fileformat_txt_seq.q.out
++++ b/ql/src/test/results/clientnegative/load_wrong_fileformat_txt_seq.q.out
+@@ -11,4 +11,6 @@ PREHOOK: type: LOAD
+ #### A masked pattern was here ####
+ PREHOOK: Output: default@t1
+ Failed with exception Wrong file format. Please check the file's format.
+-FAILED: Execution Error, return code 1 from org.apache.hadoop.hive.ql.exec.MoveTask
++Remote Exception: null
++
++FAILED: Execution Error, return code 20013 from org.apache.hadoop.hive.ql.exec.MoveTask. Wrong file format. Please check the file's format.
+-- 
+1.7.9.5
+

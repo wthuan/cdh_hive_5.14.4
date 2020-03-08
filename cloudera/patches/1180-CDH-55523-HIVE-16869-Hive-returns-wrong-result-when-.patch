@@ -1,0 +1,192 @@
+From 588c2ec2e135ac8cd31b1f785aa625fdcc2359df Mon Sep 17 00:00:00 2001
+From: Yongzhi Chen <ychena@apache.org>
+Date: Tue, 27 Jun 2017 09:19:47 -0400
+Subject: [PATCH 1180/1363] CDH-55523: HIVE-16869: Hive returns wrong result
+ when predicates on non-existing columns are
+ pushed down to Parquet reader (Yibing Shi,
+ reviewed by Yongzhi Chen)
+
+Change-Id: I26cc82f30ae97a1f34f3b85e0caf925f92ce0ba4
+---
+ .../read/ParquetFilterPredicateConverter.java      |   13 ++---
+ .../parquet/read/ParquetRecordReaderWrapper.java   |    2 +-
+ .../parquet/read/TestParquetFilterPredicate.java   |   56 +++++++++++++++++---
+ .../clientpositive/parquet_predicate_pushdown_2.q  |    7 +++
+ .../parquet_predicate_pushdown_2.q.out             |   38 +++++++++++++
+ 5 files changed, 103 insertions(+), 13 deletions(-)
+ create mode 100644 ql/src/test/queries/clientpositive/parquet_predicate_pushdown_2.q
+ create mode 100644 ql/src/test/results/clientpositive/parquet_predicate_pushdown_2.q.out
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/read/ParquetFilterPredicateConverter.java b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/read/ParquetFilterPredicateConverter.java
+index 3a41b26..56b2bc0 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/read/ParquetFilterPredicateConverter.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/read/ParquetFilterPredicateConverter.java
+@@ -66,14 +66,15 @@ private static FilterPredicate translate(ExpressionTree root,
+     switch (root.getOperator()) {
+       case OR:
+         for(ExpressionTree child: root.getChildren()) {
++          FilterPredicate childPredicate = translate(child, leaves, columns, schema);
++          if (childPredicate == null) {
++            return null;
++          }
++
+           if (p == null) {
+-            p = translate(child, leaves, columns, schema);
++            p = childPredicate;
+           } else {
+-            FilterPredicate right = translate(child, leaves, columns, schema);
+-            // constant means no filter, ignore it when it is null
+-            if(right != null){
+-              p = FilterApi.or(p, right);
+-            }
++            p = FilterApi.or(p, childPredicate);
+           }
+         }
+         return p;
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/read/ParquetRecordReaderWrapper.java b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/read/ParquetRecordReaderWrapper.java
+index e593204..f4c5a7c 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/read/ParquetRecordReaderWrapper.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/read/ParquetRecordReaderWrapper.java
+@@ -151,7 +151,7 @@ public ParquetRecordReaderWrapper(
+     FilterPredicate p = ParquetFilterPredicateConverter.toFilterPredicate(sarg, schema);
+     if (p != null) {
+       // Filter may have sensitive information. Do not send to debug.
+-      LOG.debug("PARQUET predicate push down generated.");
++      LOG.debug("PARQUET predicate push down generated. Predicates = [" + p + "]");
+       ParquetInputFormat.setFilterPredicate(conf, p);
+       return FilterCompat.get(p);
+     } else {
+diff --git a/ql/src/test/org/apache/hadoop/hive/ql/io/parquet/read/TestParquetFilterPredicate.java b/ql/src/test/org/apache/hadoop/hive/ql/io/parquet/read/TestParquetFilterPredicate.java
+index edc727c..815bcc9 100644
+--- a/ql/src/test/org/apache/hadoop/hive/ql/io/parquet/read/TestParquetFilterPredicate.java
++++ b/ql/src/test/org/apache/hadoop/hive/ql/io/parquet/read/TestParquetFilterPredicate.java
+@@ -32,19 +32,63 @@
+   public void testFilterColumnsThatDoNoExistOnSchema() {
+     MessageType schema = MessageTypeParser.parseMessageType("message test { required int32 a; required binary stinger; }");
+     SearchArgument sarg = SearchArgumentFactory.newBuilder()
+-        .startNot()
++            .startNot()
++            .startOr()
++            .isNull("a")
++            .between("y", 10L, 20L) // Column will be removed from filter
++            .in("z", 1L, 2L, 3L) // Column will be removed from filter
++            .nullSafeEquals("a", "stinger")
++            .end()
++            .end()
++            .build();
++
++    FilterPredicate p = ParquetFilterPredicateConverter.toFilterPredicate(sarg, schema);
++
++    String expected = "and(not(eq(a, null)), not(eq(a, Binary{\"stinger\"})))";
++    assertEquals(expected, p.toString());
++  }
++
++  @Test
++  public void testFilterColumnsThatDoNoExistOnSchemaHighOrder1() {
++    MessageType schema = MessageTypeParser.parseMessageType("message test { required int32 a; required int32 b; }");
++    SearchArgument sarg = SearchArgumentFactory.newBuilder()
+         .startOr()
+-        .isNull("a")
+-        .between("y", 10, 20) // Column will be removed from filter
+-        .in("z", 1, 2, 3) // Column will be removed from filter
+-        .nullSafeEquals("a", "stinger")
++        .startAnd()
++        .equals("a", 1L)
++        .equals("none", 1L)
++        .end()
++        .startAnd()
++        .equals("a", 999L)
++        .equals("none", 999L)
+         .end()
+         .end()
+         .build();
+ 
+     FilterPredicate p = ParquetFilterPredicateConverter.toFilterPredicate(sarg, schema);
+ 
+-    String expected = "and(not(eq(a, null)), not(eq(a, Binary{\"stinger\"})))";
++    String expected = "or(eq(a, 1), eq(a, 999))";
++    assertEquals(expected, p.toString());
++  }
++
++  @Test
++  public void testFilterColumnsThatDoNoExistOnSchemaHighOrder2() {
++    MessageType schema = MessageTypeParser.parseMessageType("message test { required int32 a; required int32 b; }");
++    SearchArgument sarg = SearchArgumentFactory.newBuilder()
++        .startAnd()
++        .startOr()
++        .equals("a", 1L)
++        .equals("b", 1L)
++        .end()
++        .startOr()
++        .equals("a", 999L)
++        .equals("none", 999L)
++        .end()
++        .end()
++        .build();
++
++    FilterPredicate p = ParquetFilterPredicateConverter.toFilterPredicate(sarg, schema);
++
++    String expected = "or(eq(a, 1), eq(b, 1))";
+     assertEquals(expected, p.toString());
+   }
+ 
+diff --git a/ql/src/test/queries/clientpositive/parquet_predicate_pushdown_2.q b/ql/src/test/queries/clientpositive/parquet_predicate_pushdown_2.q
+new file mode 100644
+index 0000000..1b63a42
+--- /dev/null
++++ b/ql/src/test/queries/clientpositive/parquet_predicate_pushdown_2.q
+@@ -0,0 +1,7 @@
++SET hive.optimize.ppd=true;
++SET hive.optimize.index.filter=true;
++
++create table test_parq(a int, b int) partitioned by (p int) stored as parquet;
++insert overwrite table test_parq partition (p=1) values (1, 1);
++select * from test_parq where a=1 and p=1;
++select * from test_parq where (a=1 and p=1) or (a=999 and p=999);
+diff --git a/ql/src/test/results/clientpositive/parquet_predicate_pushdown_2.q.out b/ql/src/test/results/clientpositive/parquet_predicate_pushdown_2.q.out
+new file mode 100644
+index 0000000..6cdd0a8
+--- /dev/null
++++ b/ql/src/test/results/clientpositive/parquet_predicate_pushdown_2.q.out
+@@ -0,0 +1,38 @@
++PREHOOK: query: create table test_parq(a int, b int) partitioned by (p int) stored as parquet
++PREHOOK: type: CREATETABLE
++PREHOOK: Output: database:default
++PREHOOK: Output: default@test_parq
++POSTHOOK: query: create table test_parq(a int, b int) partitioned by (p int) stored as parquet
++POSTHOOK: type: CREATETABLE
++POSTHOOK: Output: database:default
++POSTHOOK: Output: default@test_parq
++PREHOOK: query: insert overwrite table test_parq partition (p=1) values (1, 1)
++PREHOOK: type: QUERY
++PREHOOK: Output: default@test_parq@p=1
++POSTHOOK: query: insert overwrite table test_parq partition (p=1) values (1, 1)
++POSTHOOK: type: QUERY
++POSTHOOK: Output: default@test_parq@p=1
++POSTHOOK: Lineage: test_parq PARTITION(p=1).a EXPRESSION [(values__tmp__table__1)values__tmp__table__1.FieldSchema(name:tmp_values_col1, type:string, comment:), ]
++POSTHOOK: Lineage: test_parq PARTITION(p=1).b EXPRESSION [(values__tmp__table__1)values__tmp__table__1.FieldSchema(name:tmp_values_col2, type:string, comment:), ]
++PREHOOK: query: select * from test_parq where a=1 and p=1
++PREHOOK: type: QUERY
++PREHOOK: Input: default@test_parq
++PREHOOK: Input: default@test_parq@p=1
++#### A masked pattern was here ####
++POSTHOOK: query: select * from test_parq where a=1 and p=1
++POSTHOOK: type: QUERY
++POSTHOOK: Input: default@test_parq
++POSTHOOK: Input: default@test_parq@p=1
++#### A masked pattern was here ####
++1	1	1
++PREHOOK: query: select * from test_parq where (a=1 and p=1) or (a=999 and p=999)
++PREHOOK: type: QUERY
++PREHOOK: Input: default@test_parq
++PREHOOK: Input: default@test_parq@p=1
++#### A masked pattern was here ####
++POSTHOOK: query: select * from test_parq where (a=1 and p=1) or (a=999 and p=999)
++POSTHOOK: type: QUERY
++POSTHOOK: Input: default@test_parq
++POSTHOOK: Input: default@test_parq@p=1
++#### A masked pattern was here ####
++1	1	1
+-- 
+1.7.9.5
+

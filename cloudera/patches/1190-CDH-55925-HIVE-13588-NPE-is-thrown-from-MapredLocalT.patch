@@ -1,0 +1,56 @@
+From 146198344bbe82c538dc8424f7154b29d3066a53 Mon Sep 17 00:00:00 2001
+From: ctang <ctang@cloudera.com>
+Date: Thu, 28 Apr 2016 22:06:47 -0400
+Subject: [PATCH 1190/1363] CDH-55925: HIVE-13588: NPE is thrown from
+ MapredLocalTask.executeInChildVM. (Chaoyu Tang,
+ reviewed by Yongzhi Chen)
+
+Change-Id: Id60eef3ba079e9686d8055091ac08e0938a40d2b
+---
+ .../hadoop/hive/ql/exec/mr/MapredLocalTask.java    |   16 ++++++++++++----
+ .../clientpositive/auto_sortmerge_join_8.q.out     |    2 --
+ 2 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/mr/MapredLocalTask.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/mr/MapredLocalTask.java
+index 74b2032..d078457 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/mr/MapredLocalTask.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/mr/MapredLocalTask.java
+@@ -323,10 +323,18 @@ public int executeInChildVM(DriverContext driverContext) {
+ 
+       CachingPrintStream errPrintStream = new CachingPrintStream(System.err);
+ 
+-      StreamPrinter outPrinter = new StreamPrinter(executor.getInputStream(), null, System.out,
+-        OperationLog.getCurrentOperationLog().getPrintStream());
+-      StreamPrinter errPrinter = new StreamPrinter(executor.getErrorStream(), null, errPrintStream,
+-        OperationLog.getCurrentOperationLog().getPrintStream());
++      StreamPrinter outPrinter;
++      StreamPrinter errPrinter;
++      OperationLog operationLog = OperationLog.getCurrentOperationLog();
++      if (operationLog != null) {
++        outPrinter = new StreamPrinter(executor.getInputStream(), null, System.out,
++            operationLog.getPrintStream());
++        errPrinter = new StreamPrinter(executor.getErrorStream(), null, errPrintStream,
++            operationLog.getPrintStream());
++      } else {
++        outPrinter = new StreamPrinter(executor.getInputStream(), null, System.out);
++        errPrinter = new StreamPrinter(executor.getErrorStream(), null, errPrintStream);
++      }
+ 
+       outPrinter.start();
+       errPrinter.start();
+diff --git a/ql/src/test/results/clientpositive/auto_sortmerge_join_8.q.out b/ql/src/test/results/clientpositive/auto_sortmerge_join_8.q.out
+index 6bb8de7..74f3e60 100644
+--- a/ql/src/test/results/clientpositive/auto_sortmerge_join_8.q.out
++++ b/ql/src/test/results/clientpositive/auto_sortmerge_join_8.q.out
+@@ -1514,8 +1514,6 @@ PREHOOK: Input: default@bucket_small
+ PREHOOK: Input: default@bucket_small@ds=2008-04-08
+ PREHOOK: Input: default@bucket_small@ds=2008-04-09
+ #### A masked pattern was here ####
+-FAILED: Execution Error, return code 1 from org.apache.hadoop.hive.ql.exec.mr.MapredLocalTask
+-ATTEMPT: Execute BackupTask: org.apache.hadoop.hive.ql.exec.mr.MapRedTask
+ POSTHOOK: query: select count(*) FROM bucket_big a JOIN bucket_small b ON a.key = b.key
+ POSTHOOK: type: QUERY
+ POSTHOOK: Input: default@bucket_big
+-- 
+1.7.9.5
+

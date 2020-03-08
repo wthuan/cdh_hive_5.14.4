@@ -1,0 +1,28 @@
+From 7c45459f376516703618cc44a4368894b85b428c Mon Sep 17 00:00:00 2001
+From: stakiar <stakiar@cloudera.com>
+Date: Wed, 13 Dec 2017 11:42:29 -0800
+Subject: [PATCH 1327/1363] CLOUDERA-BUILD: CDH-62979: C6 PTest is failing due
+ to wget call against old Jenkins instance
+
+Change-Id: I37d29cd1893eb0e184516e5c4996a7a39a9e9df1
+---
+ cloudera/post_commit_hook.sh |    3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/cloudera/post_commit_hook.sh b/cloudera/post_commit_hook.sh
+index 1f87748..a98a2d1 100755
+--- a/cloudera/post_commit_hook.sh
++++ b/cloudera/post_commit_hook.sh
+@@ -32,9 +32,6 @@ export JAVA7_BUILD="1"
+ mkdir -p $HIVE_PTEST_DIR
+ cd $HIVE_PTEST_DIR
+ 
+-rm -f parent_buildinfo
+-wget http://unittest.jenkins.cloudera.com/job/CDH5-Unit-Tests-Aggregate/lastBuild/artifact/parent_buildinfo
+-
+ cat > buildinfo << EOF
+ Job: $JOB_NAME
+ Build ID: $BUILD_ID
+-- 
+1.7.9.5
+

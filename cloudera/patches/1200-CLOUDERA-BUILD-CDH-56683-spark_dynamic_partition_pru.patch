@@ -1,0 +1,72 @@
+From b92847099a66f0e82a0f44d4fb31eb586917ea52 Mon Sep 17 00:00:00 2001
+From: stakiar <stakiar@cloudera.com>
+Date: Wed, 19 Jul 2017 11:42:36 -0700
+Subject: [PATCH 1200/1363] CLOUDERA-BUILD: CDH-56683:
+ spark_dynamic_partition_pruning_2.q is flaky
+
+Change-Id: I2a7fafe4f4b71f2000e0d91d8cca695d9be10b8b
+---
+ .../spark/spark_dynamic_partition_pruning_2.q.out  |   16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning_2.q.out b/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning_2.q.out
+index 5aba1ae..a3334f4 100644
+--- a/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning_2.q.out
++++ b/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning_2.q.out
+@@ -846,14 +846,14 @@ STAGE PLANS:
+     Spark
+ #### A masked pattern was here ####
+       Vertices:
+-        Map 4 
++        Map 2 
+             Map Operator Tree:
+                 TableScan
+                   alias: dim_shops
+-                  filterExpr: (id is not null and (label = 'bar')) (type: boolean)
++                  filterExpr: (id is not null and (label = 'foo')) (type: boolean)
+                   Statistics: Num rows: 3 Data size: 15 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (id is not null and (label = 'bar')) (type: boolean)
++                    predicate: (id is not null and (label = 'foo')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 5 Basic stats: COMPLETE Column stats: NONE
+                     Spark HashTable Sink Operator
+                       keys:
+@@ -873,7 +873,7 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                           Statistics: Num rows: 1 Data size: 5 Basic stats: COMPLETE Column stats: NONE
+                           target column name: dim_shops_id
+-                          target work: Map 3
++                          target work: Map 1
+             Local Work:
+               Map Reduce Local Work
+ 
+@@ -881,14 +881,14 @@ STAGE PLANS:
+     Spark
+ #### A masked pattern was here ####
+       Vertices:
+-        Map 2 
++        Map 4 
+             Map Operator Tree:
+                 TableScan
+                   alias: dim_shops
+-                  filterExpr: (id is not null and (label = 'foo')) (type: boolean)
++                  filterExpr: (id is not null and (label = 'bar')) (type: boolean)
+                   Statistics: Num rows: 3 Data size: 15 Basic stats: COMPLETE Column stats: NONE
+                   Filter Operator
+-                    predicate: (id is not null and (label = 'foo')) (type: boolean)
++                    predicate: (id is not null and (label = 'bar')) (type: boolean)
+                     Statistics: Num rows: 1 Data size: 5 Basic stats: COMPLETE Column stats: NONE
+                     Spark HashTable Sink Operator
+                       keys:
+@@ -908,7 +908,7 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                           Statistics: Num rows: 1 Data size: 5 Basic stats: COMPLETE Column stats: NONE
+                           target column name: dim_shops_id
+-                          target work: Map 1
++                          target work: Map 3
+             Local Work:
+               Map Reduce Local Work
+ 
+-- 
+1.7.9.5
+

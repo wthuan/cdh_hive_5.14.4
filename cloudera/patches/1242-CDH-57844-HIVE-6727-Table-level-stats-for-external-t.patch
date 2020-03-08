@@ -1,0 +1,130 @@
+From 7be41c7acd5a1e9bdb34241c90e7923f2c532fd6 Mon Sep 17 00:00:00 2001
+From: Bing Li <sarah.libing@gmail.com>
+Date: Mon, 1 Jun 2015 01:35:00 -0700
+Subject: [PATCH 1242/1363] CDH-57844 HIVE-6727 : Table level stats for
+ external tables are set incorrectly (Bing Li via
+ Ashutosh Chauhan)
+
+Signed-off-by: Ashutosh Chauhan <hashutosh@apache.org>
+(cherry picked from commit 8f4abd1e60b3410558e0a2cb6886334b7d505a98)
+
+Change-Id: I7e867961b3e797104bbd702bc57f82e844059ab0
+---
+ .../apache/hadoop/hive/metastore/Warehouse.java    |    2 +-
+ .../encryption_join_unencrypted_tbl.q.out          |    8 ++++----
+ .../clientpositive/spark/stats_noscan_2.q.out      |    8 ++++----
+ .../results/clientpositive/stats_noscan_2.q.out    |    8 ++++----
+ 4 files changed, 13 insertions(+), 13 deletions(-)
+
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/Warehouse.java b/metastore/src/java/org/apache/hadoop/hive/metastore/Warehouse.java
+index fcf86c0..79370e4 100755
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/Warehouse.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/Warehouse.java
+@@ -545,7 +545,7 @@ public static String makePartName(List<FieldSchema> partCols,
+    */
+   public FileStatus[] getFileStatusesForUnpartitionedTable(Database db, Table table)
+       throws MetaException {
+-    Path tablePath = getTablePath(db, table.getTableName());
++    Path tablePath = getDnsPath(new Path(table.getSd().getLocation()));
+     try {
+       FileSystem fileSys = tablePath.getFileSystem(conf);
+       return HiveStatsUtils.getFileStatusRecurse(tablePath, -1, fileSys);
+diff --git a/ql/src/test/results/clientpositive/encrypted/encryption_join_unencrypted_tbl.q.out b/ql/src/test/results/clientpositive/encrypted/encryption_join_unencrypted_tbl.q.out
+index b9bcb45..5f9587f 100644
+--- a/ql/src/test/results/clientpositive/encrypted/encryption_join_unencrypted_tbl.q.out
++++ b/ql/src/test/results/clientpositive/encrypted/encryption_join_unencrypted_tbl.q.out
+@@ -624,13 +624,13 @@ STAGE PLANS:
+               columns.types int:string
+ #### A masked pattern was here ####
+               name default.encrypted_table
+-              numFiles 0
++              numFiles 1
+               numRows 0
+               rawDataSize 0
+               serialization.ddl struct encrypted_table { i32 key, string value}
+               serialization.format 1
+               serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-              totalSize 0
++              totalSize 5812
+ #### A masked pattern was here ####
+             serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+           
+@@ -644,13 +644,13 @@ STAGE PLANS:
+                 columns.types int:string
+ #### A masked pattern was here ####
+                 name default.encrypted_table
+-                numFiles 0
++                numFiles 1
+                 numRows 0
+                 rawDataSize 0
+                 serialization.ddl struct encrypted_table { i32 key, string value}
+                 serialization.format 1
+                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                totalSize 0
++                totalSize 5812
+ #### A masked pattern was here ####
+               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+               name: default.encrypted_table
+diff --git a/ql/src/test/results/clientpositive/spark/stats_noscan_2.q.out b/ql/src/test/results/clientpositive/spark/stats_noscan_2.q.out
+index affd43e..b928180 100644
+--- a/ql/src/test/results/clientpositive/spark/stats_noscan_2.q.out
++++ b/ql/src/test/results/clientpositive/spark/stats_noscan_2.q.out
+@@ -50,10 +50,10 @@ Table Type:         	EXTERNAL_TABLE
+ Table Parameters:	 	 
+ 	COLUMN_STATS_ACCURATE	true                
+ 	EXTERNAL            	TRUE                
+-	numFiles            	0                   
++	numFiles            	1                   
+ 	numRows             	-1                  
+ 	rawDataSize         	-1                  
+-	totalSize           	0                   
++	totalSize           	11                  
+ #### A masked pattern was here ####
+ 	 	 
+ # Storage Information	 	 
+@@ -94,10 +94,10 @@ Table Type:         	EXTERNAL_TABLE
+ Table Parameters:	 	 
+ 	COLUMN_STATS_ACCURATE	true                
+ 	EXTERNAL            	TRUE                
+-	numFiles            	0                   
++	numFiles            	1                   
+ 	numRows             	6                   
+ 	rawDataSize         	6                   
+-	totalSize           	0                   
++	totalSize           	11                  
+ #### A masked pattern was here ####
+ 	 	 
+ # Storage Information	 	 
+diff --git a/ql/src/test/results/clientpositive/stats_noscan_2.q.out b/ql/src/test/results/clientpositive/stats_noscan_2.q.out
+index affd43e..b928180 100644
+--- a/ql/src/test/results/clientpositive/stats_noscan_2.q.out
++++ b/ql/src/test/results/clientpositive/stats_noscan_2.q.out
+@@ -50,10 +50,10 @@ Table Type:         	EXTERNAL_TABLE
+ Table Parameters:	 	 
+ 	COLUMN_STATS_ACCURATE	true                
+ 	EXTERNAL            	TRUE                
+-	numFiles            	0                   
++	numFiles            	1                   
+ 	numRows             	-1                  
+ 	rawDataSize         	-1                  
+-	totalSize           	0                   
++	totalSize           	11                  
+ #### A masked pattern was here ####
+ 	 	 
+ # Storage Information	 	 
+@@ -94,10 +94,10 @@ Table Type:         	EXTERNAL_TABLE
+ Table Parameters:	 	 
+ 	COLUMN_STATS_ACCURATE	true                
+ 	EXTERNAL            	TRUE                
+-	numFiles            	0                   
++	numFiles            	1                   
+ 	numRows             	6                   
+ 	rawDataSize         	6                   
+-	totalSize           	0                   
++	totalSize           	11                  
+ #### A masked pattern was here ####
+ 	 	 
+ # Storage Information	 	 
+-- 
+1.7.9.5
+

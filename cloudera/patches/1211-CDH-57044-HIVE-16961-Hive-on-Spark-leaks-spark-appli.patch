@@ -1,0 +1,45 @@
+From 10524a26a7b3920304b24fecbd9953a102932048 Mon Sep 17 00:00:00 2001
+From: Xuefu Zhang <xuefu@uber.com>
+Date: Wed, 5 Jul 2017 10:33:18 -0700
+Subject: [PATCH 1211/1363] CDH-57044 HIVE-16961: Hive on Spark leaks spark
+ application in case user cancels query and closes
+ session (reviewed by Rui)
+
+(cherry picked from commit 0731dab18c85363d4bad8a556c437a587277143c)
+
+Change-Id: I455b6b3d2be4233ca326e28032d5f562bd78e5cf
+---
+ .../apache/hive/spark/client/SparkClientImpl.java  |   11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java b/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java
+index 6b6b230..37b76f5 100644
+--- a/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java
++++ b/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java
+@@ -497,16 +497,19 @@ public void run() {
+                 errStr.append('\n');
+               }
+ 
+-              rpcServer.cancelClient(clientId,
+-                  "Child process exited before connecting back with error log " + errStr.toString());
+               LOG.warn("Child process exited with code {}", exitCode);
++              rpcServer.cancelClient(clientId,
++                  "Child process (spark-submit) exited before connecting back with error log " + errStr.toString());
+             }
+           } catch (InterruptedException ie) {
+-            LOG.warn("Waiting thread interrupted, killing child process.");
++            LOG.warn("Thread waiting on the child process (spark-submit) is interrupted, killing the child process.");
++            rpcServer.cancelClient(clientId, "Thread waiting on the child porcess (spark-submit) is interrupted");
+             Thread.interrupted();
+             child.destroy();
+           } catch (Exception e) {
+-            LOG.warn("Exception while waiting for child process.", e);
++            String errMsg = "Exception while waiting for child process (spark-submit)";
++            LOG.warn(errMsg, e);
++            rpcServer.cancelClient(clientId, errMsg);
+           }
+         }
+       };
+-- 
+1.7.9.5
+

@@ -1,0 +1,65 @@
+From 83832384f31e8477c57ad5abad192a362a5a805c Mon Sep 17 00:00:00 2001
+From: Aihua Xu <aihuaxu@apache.org>
+Date: Wed, 16 May 2018 11:27:53 -0700
+Subject: [PATCH 1353/1363] CDH-68142: HIVE-19424: NPE In MetaDataFormatters
+ (Alice Fan, reviewed by Aihua Xu)
+
+(cherry picked from commit 29f57fc73ef46dc4b5b6ea7c74e493e3cb3e2f7f)
+
+Change-Id: Ic8b726637d2b3bb4b0a22719f9c5eb3d8c40ff4c
+---
+ .../metadata/formatting/JsonMetaDataFormatter.java |    8 ++++----
+ .../metadata/formatting/TextMetaDataFormatter.java |    8 ++++----
+ 2 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/metadata/formatting/JsonMetaDataFormatter.java b/ql/src/java/org/apache/hadoop/hive/ql/metadata/formatting/JsonMetaDataFormatter.java
+index 92dc81c..cf8dd46 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/metadata/formatting/JsonMetaDataFormatter.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/metadata/formatting/JsonMetaDataFormatter.java
+@@ -167,15 +167,15 @@ public void showTableStatus(DataOutputStream out, Hive db, HiveConf conf,
+         if (par.getLocation() != null) {
+           tblLoc = par.getDataLocation().toString();
+         }
+-        inputFormattCls = par.getInputFormatClass().getName();
+-        outputFormattCls = par.getOutputFormatClass().getName();
++        inputFormattCls = par.getInputFormatClass() == null ? null : par.getInputFormatClass().getName();
++        outputFormattCls = par.getOutputFormatClass() == null ? null : par.getOutputFormatClass().getName();
+       }
+     } else {
+       if (tbl.getPath() != null) {
+         tblLoc = tbl.getDataLocation().toString();
+       }
+-      inputFormattCls = tbl.getInputFormatClass().getName();
+-      outputFormattCls = tbl.getOutputFormatClass().getName();
++      inputFormattCls = tbl.getInputFormatClass() == null ? null : tbl.getInputFormatClass().getName();
++      outputFormattCls = tbl.getOutputFormatClass() == null ? null : tbl.getOutputFormatClass().getName();
+     }
+ 
+     MapBuilder builder = MapBuilder.create();
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/metadata/formatting/TextMetaDataFormatter.java b/ql/src/java/org/apache/hadoop/hive/ql/metadata/formatting/TextMetaDataFormatter.java
+index a9e500a..f6e2294 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/metadata/formatting/TextMetaDataFormatter.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/metadata/formatting/TextMetaDataFormatter.java
+@@ -192,15 +192,15 @@ public void showTableStatus(DataOutputStream outStream,
+             if (par.getLocation() != null) {
+               tblLoc = par.getDataLocation().toString();
+             }
+-            inputFormattCls = par.getInputFormatClass().getName();
+-            outputFormattCls = par.getOutputFormatClass().getName();
++            inputFormattCls = par.getInputFormatClass() == null ? null : par.getInputFormatClass().getName();
++            outputFormattCls = par.getOutputFormatClass() == null ? null : par.getOutputFormatClass().getName();
+           }
+         } else {
+           if (tbl.getPath() != null) {
+             tblLoc = tbl.getDataLocation().toString();
+           }
+-          inputFormattCls = tbl.getInputFormatClass().getName();
+-          outputFormattCls = tbl.getOutputFormatClass().getName();
++          inputFormattCls = tbl.getInputFormatClass() == null ? null : tbl.getInputFormatClass().getName();
++          outputFormattCls = tbl.getOutputFormatClass() == null ? null : tbl.getOutputFormatClass().getName();
+         }
+ 
+         String owner = tbl.getOwner();
+-- 
+1.7.9.5
+

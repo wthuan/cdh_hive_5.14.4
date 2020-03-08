@@ -1,0 +1,981 @@
+From 74b653ee44bca4057e0e4986c910fa1f24a6ad70 Mon Sep 17 00:00:00 2001
+From: Janaki Lahorani <janaki@cloudera.com>
+Date: Sun, 30 Jul 2017 18:33:25 -0700
+Subject: [PATCH 1220/1363] CDH-56081: HIVE-16998: Add config to enable HoS
+ DPP only for map-joins (Janaki Lahorani, reviewed
+ by Sahil Takiar)
+
+(cherry picked from commit 723b4ef7f923780275e08bbbd1201efd0248a675)
+
+Conflicts:
+	common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+	itests/src/test/resources/testconfiguration.properties
+	ql/src/java/org/apache/hadoop/hive/ql/optimizer/SparkRemoveDynamicPruning.java
+	ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SparkPartitionPruningSinkOperator.java
+	ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SplitOpTreeForDPP.java
+
+Change-Id: I43bd12d3e68f35e7ff35eb769639d1ec7231a70e
+---
+ .../java/org/apache/hadoop/hive/conf/HiveConf.java |   29 ++
+ .../test/resources/testconfiguration.properties    |    3 +-
+ .../apache/hadoop/hive/ql/io/HiveInputFormat.java  |    2 +-
+ .../DynamicPartitionPruningOptimization.java       |    2 +-
+ .../ql/optimizer/SparkRemoveDynamicPruning.java    |   79 ++++
+ .../optimizer/SparkRemoveDynamicPruningBySize.java |   65 ---
+ .../hadoop/hive/ql/parse/spark/SparkCompiler.java  |   14 +-
+ .../spark/SparkPartitionPruningSinkOperator.java   |   49 +++
+ .../hive/ql/parse/spark/SplitOpTreeForDPP.java     |   15 +-
+ .../hadoop/hive/ql/ppd/SyntheticJoinPredicate.java |    2 +-
+ .../spark_dynamic_partition_pruning_mapjoin_only.q |   50 +++
+ ...rk_dynamic_partition_pruning_mapjoin_only.q.out |  451 ++++++++++++++++++++
+ 12 files changed, 676 insertions(+), 85 deletions(-)
+ create mode 100644 ql/src/java/org/apache/hadoop/hive/ql/optimizer/SparkRemoveDynamicPruning.java
+ delete mode 100644 ql/src/java/org/apache/hadoop/hive/ql/optimizer/SparkRemoveDynamicPruningBySize.java
+ create mode 100644 ql/src/test/queries/clientpositive/spark_dynamic_partition_pruning_mapjoin_only.q
+ create mode 100644 ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning_mapjoin_only.q.out
+
+diff --git a/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java b/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+index f9f9c1b..17dcfbc 100644
+--- a/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
++++ b/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+@@ -2206,6 +2206,10 @@ public void setSparkConfigUpdated(boolean isSparkConfigUpdated) {
+     SPARK_DYNAMIC_PARTITION_PRUNING_MAX_DATA_SIZE(
+         "hive.spark.dynamic.partition.pruning.max.data.size", 100*1024*1024L,
+         "Maximum total data size in dynamic pruning."),
++    SPARK_DYNAMIC_PARTITION_PRUNING_MAP_JOIN_ONLY(
++        "hive.spark.dynamic.partition.pruning.map.join.only", false,
++        "Turn on dynamic partition pruning only for map joins.\n" +
++        "If hive.spark.dynamic.partition.pruning is set to true, this parameter value is ignored."),
+     NWAYJOINREORDER("hive.reorder.nway.joins", true,
+       "Runs reordering of tables within single n-way join (i.e.: picks streamtable)"),
+     HIVE_MSCK_PATH_VALIDATION("hive.msck.path.validation", "throw",
+@@ -2691,6 +2695,17 @@ public static void setBoolVar(Configuration conf, ConfVars var, boolean val) {
+     conf.setBoolean(var.varname, val);
+   }
+ 
++  /* Dynamic partition pruning is enabled in some or all cases if either
++   * hive.spark.dynamic.partition.pruning is true or
++   * hive.spark.dynamic.partition.pruning.map.join.only is true
++   */
++  public static boolean isSparkDPPAny(Configuration conf) {
++    return (conf.getBoolean(ConfVars.SPARK_DYNAMIC_PARTITION_PRUNING.varname,
++            ConfVars.SPARK_DYNAMIC_PARTITION_PRUNING.defaultBoolVal) ||
++            conf.getBoolean(ConfVars.SPARK_DYNAMIC_PARTITION_PRUNING_MAP_JOIN_ONLY.varname,
++            ConfVars.SPARK_DYNAMIC_PARTITION_PRUNING_MAP_JOIN_ONLY.defaultBoolVal));
++  }
++
+   public boolean getBoolVar(ConfVars var) {
+     return getBoolVar(this, var);
+   }
+@@ -3195,6 +3210,20 @@ public boolean isWebUiQueryInfoCacheEnabled() {
+     return isWebUiEnabled() && this.getIntVar(ConfVars.HIVE_SERVER2_WEBUI_MAX_HISTORIC_QUERIES) > 0;
+   }
+ 
++  /* Dynamic partition pruning is enabled in some or all cases
++   */
++  public boolean isSparkDPPAny() {
++    return isSparkDPPAny(this);
++  }
++
++  /* Dynamic partition pruning is enabled only for map join
++   * hive.spark.dynamic.partition.pruning is false and
++   * hive.spark.dynamic.partition.pruning.map.join.only is true
++   */
++  public boolean isSparkDPPOnlyMapjoin() {
++    return (!this.getBoolVar(ConfVars.SPARK_DYNAMIC_PARTITION_PRUNING) &&
++            this.getBoolVar(ConfVars.SPARK_DYNAMIC_PARTITION_PRUNING_MAP_JOIN_ONLY));
++  }
+ 
+   public static boolean isLoadMetastoreConfig() {
+     return loadMetastoreConfig;
+diff --git a/itests/src/test/resources/testconfiguration.properties b/itests/src/test/resources/testconfiguration.properties
+index 913283c..a3c89d6 100644
+--- a/itests/src/test/resources/testconfiguration.properties
++++ b/itests/src/test/resources/testconfiguration.properties
+@@ -930,7 +930,8 @@ spark.query.files=add_part_multiple.q, \
+ spark.only.query.files=spark_dynamic_partition_pruning.q,\
+   spark_dynamic_partition_pruning_2.q,\
+   spark_vectorized_dynamic_partition_pruning.q,\
+-  spark_dynamic_partition_pruning_3.q
++  spark_dynamic_partition_pruning_3.q,\
++  spark_dynamic_partition_pruning_mapjoin_only.q
+ 
+ miniSparkOnYarn.query.files=auto_sortmerge_join_16.q,\
+   bucket4.q,\
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/HiveInputFormat.java b/ql/src/java/org/apache/hadoop/hive/ql/io/HiveInputFormat.java
+index 393f2ca..9179072 100755
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/HiveInputFormat.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/HiveInputFormat.java
+@@ -272,7 +272,7 @@ protected void init(JobConf job) {
+ 
+       // Prune partitions
+       if (HiveConf.getVar(job, HiveConf.ConfVars.HIVE_EXECUTION_ENGINE).equals("spark")
+-          && HiveConf.getBoolVar(job, HiveConf.ConfVars.SPARK_DYNAMIC_PARTITION_PRUNING)) {
++          && HiveConf.isSparkDPPAny(job)) {
+         SparkDynamicPartitionPruner pruner = new SparkDynamicPartitionPruner();
+         try {
+           pruner.prune(mrwork, job);
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/DynamicPartitionPruningOptimization.java b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/DynamicPartitionPruningOptimization.java
+index f475926..fdc8c3e 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/DynamicPartitionPruningOptimization.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/DynamicPartitionPruningOptimization.java
+@@ -171,7 +171,7 @@ public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procCtx, Obje
+     TableScanOperator ts = null;
+ 
+     if (!parseContext.getConf().getBoolVar(ConfVars.TEZ_DYNAMIC_PARTITION_PRUNING) &&
+-        !parseContext.getConf().getBoolVar(ConfVars.SPARK_DYNAMIC_PARTITION_PRUNING)) {
++        !parseContext.getConf().isSparkDPPAny()) {
+       // nothing to do when the optimization is off
+       return null;
+     }
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/SparkRemoveDynamicPruning.java b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/SparkRemoveDynamicPruning.java
+new file mode 100644
+index 0000000..13c5ab3
+--- /dev/null
++++ b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/SparkRemoveDynamicPruning.java
+@@ -0,0 +1,79 @@
++/**
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.hadoop.hive.ql.optimizer;
++
++import java.util.Stack;
++
++import org.apache.commons.logging.Log;
++import org.apache.commons.logging.LogFactory;
++import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
++import org.apache.hadoop.hive.ql.exec.OperatorUtils;
++import org.apache.hadoop.hive.ql.lib.Node;
++import org.apache.hadoop.hive.ql.lib.NodeProcessor;
++import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
++import org.apache.hadoop.hive.ql.optimizer.spark.SparkPartitionPruningSinkDesc;
++import org.apache.hadoop.hive.ql.parse.SemanticException;
++import org.apache.hadoop.hive.ql.parse.spark.OptimizeSparkProcContext;
++import org.apache.hadoop.hive.ql.parse.spark.SparkPartitionPruningSinkOperator;
++
++/**
++ * Check if dynamic partition pruning should be disabled.  Currently the following 2 cases
++ * checked.
++ * 1.  The expected number of keys for dynamic pruning is too large
++ * 2.  If DPP enabled only for mapjoin and join is not a map join.
++ *
++ * Cloned from RemoveDynamicPruningBySize
++ */
++public class SparkRemoveDynamicPruning implements NodeProcessor {
++
++  static final private Log LOG = LogFactory.getLog(SparkRemoveDynamicPruning.class.getName());
++
++  @Override
++  public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procContext,
++      Object... nodeOutputs)
++      throws SemanticException {
++
++    OptimizeSparkProcContext context = (OptimizeSparkProcContext) procContext;
++    boolean remove = false;
++
++    SparkPartitionPruningSinkOperator op = (SparkPartitionPruningSinkOperator) nd;
++    SparkPartitionPruningSinkDesc desc = op.getConf();
++
++    if (context.getConf().isSparkDPPOnlyMapjoin() &&
++        !op.isWithMapjoin()) {
++      LOG.info("Disabling dynamic partition pruning based on: " + desc.getTableScan().getName()
++          + ". This is not part of a map join.");
++      remove = true;
++    }
++    else if (desc.getStatistics().getDataSize() > context.getConf()
++        .getLongVar(ConfVars.SPARK_DYNAMIC_PARTITION_PRUNING_MAX_DATA_SIZE)) {
++      LOG.info("Disabling dynamic partition pruning based on: "
++          + desc.getTableScan().getName()
++          + ". Expected data size is too big: " + desc.getStatistics().getDataSize());
++      remove = true;
++    }
++
++    if (remove) {
++      // at this point we've found the fork in the op pipeline that has the pruning as a child plan.
++      OperatorUtils.removeBranch(op);
++    }
++
++    return false;
++  }
++}
+\ No newline at end of file
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/SparkRemoveDynamicPruningBySize.java b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/SparkRemoveDynamicPruningBySize.java
+deleted file mode 100644
+index e1fd7a0..0000000
+--- a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/SparkRemoveDynamicPruningBySize.java
++++ /dev/null
+@@ -1,65 +0,0 @@
+-/**
+- * Licensed to the Apache Software Foundation (ASF) under one
+- * or more contributor license agreements.  See the NOTICE file
+- * distributed with this work for additional information
+- * regarding copyright ownership.  The ASF licenses this file
+- * to you under the Apache License, Version 2.0 (the
+- * "License"); you may not use this file except in compliance
+- * with the License.  You may obtain a copy of the License at
+- *
+- *     http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.apache.hadoop.hive.ql.optimizer;
+-
+-import java.util.Stack;
+-
+-import org.apache.commons.logging.Log;
+-import org.apache.commons.logging.LogFactory;
+-import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+-import org.apache.hadoop.hive.ql.lib.Node;
+-import org.apache.hadoop.hive.ql.lib.NodeProcessor;
+-import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
+-import org.apache.hadoop.hive.ql.optimizer.spark.SparkPartitionPruningSinkDesc;
+-import org.apache.hadoop.hive.ql.parse.SemanticException;
+-import org.apache.hadoop.hive.ql.parse.spark.GenSparkUtils;
+-import org.apache.hadoop.hive.ql.parse.spark.OptimizeSparkProcContext;
+-import org.apache.hadoop.hive.ql.parse.spark.SparkPartitionPruningSinkOperator;
+-
+-/**
+- * If we expect the number of keys for dynamic pruning to be too large we
+- * disable it.
+- *
+- * Cloned from RemoveDynamicPruningBySize
+- */
+-public class SparkRemoveDynamicPruningBySize implements NodeProcessor {
+-
+-  static final private Log LOG = LogFactory.getLog(SparkRemoveDynamicPruningBySize.class.getName());
+-
+-  @Override
+-  public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procContext,
+-      Object... nodeOutputs)
+-      throws SemanticException {
+-
+-    OptimizeSparkProcContext context = (OptimizeSparkProcContext) procContext;
+-
+-    SparkPartitionPruningSinkOperator op = (SparkPartitionPruningSinkOperator) nd;
+-    SparkPartitionPruningSinkDesc desc = op.getConf();
+-
+-    if (desc.getStatistics().getDataSize() > context.getConf()
+-        .getLongVar(ConfVars.SPARK_DYNAMIC_PARTITION_PRUNING_MAX_DATA_SIZE)) {
+-      GenSparkUtils.removeBranch(op);
+-      // at this point we've found the fork in the op pipeline that has the pruning as a child plan.
+-      LOG.info("Disabling dynamic pruning for: "
+-          + desc.getTableScan().getName()
+-          + ". Expected data size is too big: " + desc.getStatistics().getDataSize());
+-    }
+-    return false;
+-  }
+-}
+\ No newline at end of file
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SparkCompiler.java b/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SparkCompiler.java
+index aaf0a1a..88ae180 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SparkCompiler.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SparkCompiler.java
+@@ -63,7 +63,7 @@
+ import org.apache.hadoop.hive.ql.log.PerfLogger;
+ import org.apache.hadoop.hive.ql.optimizer.ConstantPropagate;
+ import org.apache.hadoop.hive.ql.optimizer.DynamicPartitionPruningOptimization;
+-import org.apache.hadoop.hive.ql.optimizer.SparkRemoveDynamicPruningBySize;
++import org.apache.hadoop.hive.ql.optimizer.SparkRemoveDynamicPruning;
+ import org.apache.hadoop.hive.ql.optimizer.metainfo.annotation.AnnotateWithOpTraits;
+ import org.apache.hadoop.hive.ql.optimizer.physical.MetadataOnlyOptimizer;
+ import org.apache.hadoop.hive.ql.optimizer.physical.NullScanOptimizer;
+@@ -122,7 +122,7 @@ protected void optimizeOperatorPlan(ParseContext pCtx, Set<ReadEntity> inputs,
+     runJoinOptimizations(procCtx);
+ 
+     // Remove DPP based on expected size of the output data
+-    runRemoveDynamicPruningBySize(procCtx);
++    runRemoveDynamicPruning(procCtx);
+ 
+     // Remove cyclic dependencies for DPP
+     runCycleAnalysisForPartitionPruning(procCtx);
+@@ -130,13 +130,13 @@ protected void optimizeOperatorPlan(ParseContext pCtx, Set<ReadEntity> inputs,
+     PERF_LOGGER.PerfLogEnd(CLASS_NAME, PerfLogger.SPARK_OPTIMIZE_OPERATOR_TREE);
+   }
+ 
+-  private void runRemoveDynamicPruningBySize(OptimizeSparkProcContext procCtx) throws SemanticException {
++  private void runRemoveDynamicPruning(OptimizeSparkProcContext procCtx) throws SemanticException {
+     ParseContext pCtx = procCtx.getParseContext();
+     Map<Rule, NodeProcessor> opRules = new LinkedHashMap<Rule, NodeProcessor>();
+ 
+-    opRules.put(new RuleRegExp("Disabling Dynamic Partition Pruning By Size",
++    opRules.put(new RuleRegExp("Disabling Dynamic Partition Pruning",
+         SparkPartitionPruningSinkOperator.getOperatorName() + "%"),
+-        new SparkRemoveDynamicPruningBySize());
++        new SparkRemoveDynamicPruning());
+ 
+     // The dispatcher fires the processor corresponding to the closest matching
+     // rule and passes the context along
+@@ -150,7 +150,7 @@ private void runRemoveDynamicPruningBySize(OptimizeSparkProcContext procCtx) thr
+   }
+ 
+   private void runCycleAnalysisForPartitionPruning(OptimizeSparkProcContext procCtx) {
+-    if (!conf.getBoolVar(HiveConf.ConfVars.SPARK_DYNAMIC_PARTITION_PRUNING)) {
++    if (!conf.isSparkDPPAny()) {
+       return;
+     }
+ 
+@@ -262,7 +262,7 @@ private void runStatsAnnotation(OptimizeSparkProcContext procCtx) throws Semanti
+ 
+   private void runDynamicPartitionPruning(OptimizeSparkProcContext procCtx)
+       throws SemanticException {
+-    if (!conf.getBoolVar(HiveConf.ConfVars.SPARK_DYNAMIC_PARTITION_PRUNING)) {
++    if (!conf.isSparkDPPAny()) {
+       return;
+     }
+ 
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SparkPartitionPruningSinkOperator.java b/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SparkPartitionPruningSinkOperator.java
+index 27d67b9..c8b61c9 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SparkPartitionPruningSinkOperator.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SparkPartitionPruningSinkOperator.java
+@@ -30,7 +30,9 @@
+ import org.apache.hadoop.fs.FSDataOutputStream;
+ import org.apache.hadoop.fs.FileSystem;
+ import org.apache.hadoop.fs.Path;
++import org.apache.hadoop.hive.ql.exec.MapJoinOperator;
+ import org.apache.hadoop.hive.ql.exec.Operator;
++import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
+ import org.apache.hadoop.hive.ql.exec.Utilities;
+ import org.apache.hadoop.hive.ql.metadata.HiveException;
+ import org.apache.hadoop.hive.ql.optimizer.spark.SparkPartitionPruningSinkDesc;
+@@ -83,6 +85,53 @@ public void closeOp(boolean abort) throws HiveException {
+     }
+   }
+ 
++  /* This function determines whether sparkpruningsink is with mapjoin.  This will be called
++     to check whether the tree should be split for dpp.  For mapjoin it won't be.  Also called
++     to determine whether dpp should be enabled for anything other than mapjoin.
++   */
++  public boolean isWithMapjoin() {
++    Operator<?> branchingOp = this.getBranchingOp();
++
++    // Check if this is a MapJoin. If so, do not split.
++    for (Operator<?> childOp : branchingOp.getChildOperators()) {
++      if (childOp instanceof ReduceSinkOperator &&
++          childOp.getChildOperators().get(0) instanceof MapJoinOperator) {
++        return true;
++      }
++    }
++
++    return false;
++  }
++
++  /* Locate the op where the branch starts.  This function works only for the following pattern.
++   *     TS1       TS2
++   *      |         |
++   *     FIL       FIL
++   *      |         |
++   *      |     ---------
++   *      RS    |   |   |
++   *      |    RS  SEL SEL
++   *      |    /    |   |
++   *      |   /    GBY GBY
++   *      JOIN       |  |
++   *                 |  SPARKPRUNINGSINK
++   *                 |
++   *              SPARKPRUNINGSINK
++   */
++  public Operator<?> getBranchingOp() {
++    Operator<?> branchingOp = this;
++
++    while (branchingOp != null) {
++      if (branchingOp.getNumChild() > 1) {
++        break;
++      } else {
++        branchingOp = branchingOp.getParentOperators().get(0);
++      }
++    }
++
++    return branchingOp;
++  }
++
+   private void flushToFile() throws IOException {
+     // write an intermediate file to the specified path
+     // the format of the path is: tmpPath/targetWorkId/sourceWorkId/randInt
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SplitOpTreeForDPP.java b/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SplitOpTreeForDPP.java
+index c140f67..0a28779 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SplitOpTreeForDPP.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/SplitOpTreeForDPP.java
+@@ -25,9 +25,7 @@
+ import java.util.Stack;
+ 
+ import com.google.common.base.Preconditions;
+-import org.apache.hadoop.hive.ql.exec.MapJoinOperator;
+ import org.apache.hadoop.hive.ql.exec.Operator;
+-import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
+ import org.apache.hadoop.hive.ql.exec.TableScanOperator;
+ import org.apache.hadoop.hive.ql.exec.Utilities;
+ import org.apache.hadoop.hive.ql.exec.spark.SparkUtilities;
+@@ -89,18 +87,17 @@ public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procCtx,
+       }
+     }
+ 
+-    // Check if this is a MapJoin. If so, do not split.
+-    for (Operator<?> childOp : filterOp.getChildOperators()) {
+-      if (childOp instanceof ReduceSinkOperator &&
+-          childOp.getChildOperators().get(0) instanceof MapJoinOperator) {
+-        context.pruningSinkSet.add(pruningSinkOp);
+-        return null;
+-      }
++    // If pruning sink operator is with map join, then pruning sink need not be split to a
++    // separate tree.  Add the pruning sink operator to context and return
++    if (pruningSinkOp.isWithMapjoin()) {
++      context.pruningSinkSet.add(pruningSinkOp);
++      return null;
+     }
+ 
+     List<Operator<?>> roots = new LinkedList<Operator<?>>();
+     collectRoots(roots, pruningSinkOp);
+ 
++    Operator<?> branchingOp = pruningSinkOp.getBranchingOp();
+     List<Operator<?>> savedChildOps = filterOp.getChildOperators();
+     filterOp.setChildOperators(Utilities.makeList(selOp));
+ 
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/ppd/SyntheticJoinPredicate.java b/ql/src/java/org/apache/hadoop/hive/ql/ppd/SyntheticJoinPredicate.java
+index 15e4e4a..7d3bee0 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/ppd/SyntheticJoinPredicate.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/ppd/SyntheticJoinPredicate.java
+@@ -74,7 +74,7 @@ public ParseContext transform(ParseContext pctx) throws SemanticException {
+         && pctx.getConf().getBoolVar(ConfVars.TEZ_DYNAMIC_PARTITION_PRUNING)) {
+       enabled = true;
+     } else if ((queryEngine.equals("spark")
+-        && pctx.getConf().getBoolVar(ConfVars.SPARK_DYNAMIC_PARTITION_PRUNING))) {
++        && pctx.getConf().isSparkDPPAny())) {
+       enabled = true;
+     }
+ 
+diff --git a/ql/src/test/queries/clientpositive/spark_dynamic_partition_pruning_mapjoin_only.q b/ql/src/test/queries/clientpositive/spark_dynamic_partition_pruning_mapjoin_only.q
+new file mode 100644
+index 0000000..7c2164d
+--- /dev/null
++++ b/ql/src/test/queries/clientpositive/spark_dynamic_partition_pruning_mapjoin_only.q
+@@ -0,0 +1,50 @@
++set hive.optimize.ppd=true;
++set hive.ppd.remove.duplicatefilters=true;
++set hive.optimize.metadataonly=false;
++set hive.optimize.index.filter=true;
++set hive.strict.checks.cartesian.product=false;
++
++-- srcpart_date is the small table that will use map join.  srcpart2 is the big table.
++-- both srcpart_date and srcpart2 will be joined with srcpart
++create table srcpart_date as select ds as ds, ds as ds2 from srcpart group by ds;
++create table srcpart2 as select * from srcpart;
++
++-- enable map join and set the size to be small so that only join with srcpart_date gets to be a
++-- map join
++set hive.auto.convert.join=true;
++set hive.auto.convert.join.noconditionaltask.size=100;
++
++-- checking with dpp disabled
++-- expectation: 2 spark jobs
++EXPLAIN select *
++ from srcpart
++ join srcpart_date on (srcpart.ds = srcpart_date.ds)
++ join srcpart2 on (srcpart.hr = srcpart2.hr)
++ where srcpart_date.ds2 = '2008-04-08'
++ and srcpart2.hr = 11;
++
++-- checking with dpp enabled for all joins
++-- both join parts of srcpart_date and srcpart2 scans will result in partition pruning sink
++-- scan with srcpart2 will get split resulting in additional spark jobs
++-- expectation: 3 spark jobs
++set hive.spark.dynamic.partition.pruning=true;
++EXPLAIN select *
++ from srcpart
++ join srcpart_date on (srcpart.ds = srcpart_date.ds)
++ join srcpart2 on (srcpart.hr = srcpart2.hr)
++ where srcpart_date.ds2 = '2008-04-08'
++ and srcpart2.hr = 11;
++
++-- Restrict dpp to be enabled only for map joins
++-- expectation: 2 spark jobs
++set hive.spark.dynamic.partition.pruning.map.join.only=true;
++set hive.spark.dynamic.partition.pruning=false;
++EXPLAIN select *
++ from srcpart
++ join srcpart_date on (srcpart.ds = srcpart_date.ds)
++ join srcpart2 on (srcpart.hr = srcpart2.hr)
++ where srcpart_date.ds2 = '2008-04-08'
++ and srcpart2.hr = 11;
++
++drop table srcpart_date;
++drop table srcpart2;
+diff --git a/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning_mapjoin_only.q.out b/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning_mapjoin_only.q.out
+new file mode 100644
+index 0000000..2a1f899
+--- /dev/null
++++ b/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning_mapjoin_only.q.out
+@@ -0,0 +1,451 @@
++PREHOOK: query: create table srcpart_date as select ds as ds, ds as ds2 from srcpart group by ds
++PREHOOK: type: CREATETABLE_AS_SELECT
++PREHOOK: Input: default@srcpart
++PREHOOK: Input: default@srcpart@ds=2008-04-08/hr=11
++PREHOOK: Input: default@srcpart@ds=2008-04-08/hr=12
++PREHOOK: Input: default@srcpart@ds=2008-04-09/hr=11
++PREHOOK: Input: default@srcpart@ds=2008-04-09/hr=12
++PREHOOK: Output: database:default
++PREHOOK: Output: default@srcpart_date
++POSTHOOK: query: create table srcpart_date as select ds as ds, ds as ds2 from srcpart group by ds
++POSTHOOK: type: CREATETABLE_AS_SELECT
++POSTHOOK: Input: default@srcpart
++POSTHOOK: Input: default@srcpart@ds=2008-04-08/hr=11
++POSTHOOK: Input: default@srcpart@ds=2008-04-08/hr=12
++POSTHOOK: Input: default@srcpart@ds=2008-04-09/hr=11
++POSTHOOK: Input: default@srcpart@ds=2008-04-09/hr=12
++POSTHOOK: Output: database:default
++POSTHOOK: Output: default@srcpart_date
++PREHOOK: query: create table srcpart2 as select * from srcpart
++PREHOOK: type: CREATETABLE_AS_SELECT
++PREHOOK: Input: default@srcpart
++PREHOOK: Input: default@srcpart@ds=2008-04-08/hr=11
++PREHOOK: Input: default@srcpart@ds=2008-04-08/hr=12
++PREHOOK: Input: default@srcpart@ds=2008-04-09/hr=11
++PREHOOK: Input: default@srcpart@ds=2008-04-09/hr=12
++PREHOOK: Output: database:default
++PREHOOK: Output: default@srcpart2
++POSTHOOK: query: create table srcpart2 as select * from srcpart
++POSTHOOK: type: CREATETABLE_AS_SELECT
++POSTHOOK: Input: default@srcpart
++POSTHOOK: Input: default@srcpart@ds=2008-04-08/hr=11
++POSTHOOK: Input: default@srcpart@ds=2008-04-08/hr=12
++POSTHOOK: Input: default@srcpart@ds=2008-04-09/hr=11
++POSTHOOK: Input: default@srcpart@ds=2008-04-09/hr=12
++POSTHOOK: Output: database:default
++POSTHOOK: Output: default@srcpart2
++PREHOOK: query: EXPLAIN select *
++ from srcpart
++ join srcpart_date on (srcpart.ds = srcpart_date.ds)
++ join srcpart2 on (srcpart.hr = srcpart2.hr)
++ where srcpart_date.ds2 = '2008-04-08'
++ and srcpart2.hr = 11
++PREHOOK: type: QUERY
++POSTHOOK: query: EXPLAIN select *
++ from srcpart
++ join srcpart_date on (srcpart.ds = srcpart_date.ds)
++ join srcpart2 on (srcpart.hr = srcpart2.hr)
++ where srcpart_date.ds2 = '2008-04-08'
++ and srcpart2.hr = 11
++POSTHOOK: type: QUERY
++STAGE DEPENDENCIES:
++  Stage-2 is a root stage
++  Stage-1 depends on stages: Stage-2
++  Stage-0 depends on stages: Stage-1
++
++STAGE PLANS:
++  Stage: Stage-2
++    Spark
++#### A masked pattern was here ####
++      Vertices:
++        Map 3 
++            Map Operator Tree:
++                TableScan
++                  alias: srcpart_date
++                  filterExpr: (ds is not null and (ds2 = '2008-04-08')) (type: boolean)
++                  Statistics: Num rows: 2 Data size: 42 Basic stats: COMPLETE Column stats: NONE
++                  Filter Operator
++                    predicate: (ds is not null and (ds2 = '2008-04-08')) (type: boolean)
++                    Statistics: Num rows: 1 Data size: 21 Basic stats: COMPLETE Column stats: NONE
++                    Spark HashTable Sink Operator
++                      keys:
++                        0 ds (type: string)
++                        1 ds (type: string)
++            Local Work:
++              Map Reduce Local Work
++
++  Stage: Stage-1
++    Spark
++      Edges:
++        Reducer 2 <- Map 1 (PARTITION-LEVEL SORT, 2), Map 4 (PARTITION-LEVEL SORT, 2)
++#### A masked pattern was here ####
++      Vertices:
++        Map 1 
++            Map Operator Tree:
++                TableScan
++                  alias: srcpart
++                  filterExpr: ((ds is not null and hr is not null) and (hr = 11)) (type: boolean)
++                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
++                  Map Join Operator
++                    condition map:
++                         Inner Join 0 to 1
++                    keys:
++                      0 ds (type: string)
++                      1 ds (type: string)
++                    outputColumnNames: _col0, _col1, _col2, _col7
++                    input vertices:
++                      1 Map 3
++                    Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
++                    Reduce Output Operator
++                      key expressions: '11' (type: string)
++                      sort order: +
++                      Map-reduce partition columns: '11' (type: string)
++                      Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
++                      value expressions: _col0 (type: string), _col1 (type: string), _col2 (type: string), _col7 (type: string)
++            Local Work:
++              Map Reduce Local Work
++        Map 4 
++            Map Operator Tree:
++                TableScan
++                  alias: srcpart2
++                  filterExpr: (hr = 11) (type: boolean)
++                  Statistics: Num rows: 2000 Data size: 49248 Basic stats: COMPLETE Column stats: NONE
++                  Filter Operator
++                    predicate: (hr = 11) (type: boolean)
++                    Statistics: Num rows: 1000 Data size: 24624 Basic stats: COMPLETE Column stats: NONE
++                    Reduce Output Operator
++                      key expressions: '11' (type: string)
++                      sort order: +
++                      Map-reduce partition columns: '11' (type: string)
++                      Statistics: Num rows: 1000 Data size: 24624 Basic stats: COMPLETE Column stats: NONE
++                      value expressions: key (type: string), value (type: string), ds (type: string)
++        Reducer 2 
++            Reduce Operator Tree:
++              Join Operator
++                condition map:
++                     Inner Join 0 to 1
++                keys:
++                  0 _col3 (type: string)
++                  1 hr (type: string)
++                outputColumnNames: _col0, _col1, _col2, _col7, _col12, _col13, _col14
++                Statistics: Num rows: 1210 Data size: 12854 Basic stats: COMPLETE Column stats: NONE
++                Select Operator
++                  expressions: _col0 (type: string), _col1 (type: string), _col2 (type: string), '11' (type: string), _col7 (type: string), '2008-04-08' (type: string), _col12 (type: string), _col13 (type: string), _col14 (type: string), '11' (type: string)
++                  outputColumnNames: _col0, _col1, _col2, _col3, _col4, _col5, _col6, _col7, _col8, _col9
++                  Statistics: Num rows: 1210 Data size: 12854 Basic stats: COMPLETE Column stats: NONE
++                  File Output Operator
++                    compressed: false
++                    Statistics: Num rows: 1210 Data size: 12854 Basic stats: COMPLETE Column stats: NONE
++                    table:
++                        input format: org.apache.hadoop.mapred.TextInputFormat
++                        output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
++                        serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
++
++  Stage: Stage-0
++    Fetch Operator
++      limit: -1
++      Processor Tree:
++        ListSink
++
++PREHOOK: query: EXPLAIN select *
++ from srcpart
++ join srcpart_date on (srcpart.ds = srcpart_date.ds)
++ join srcpart2 on (srcpart.hr = srcpart2.hr)
++ where srcpart_date.ds2 = '2008-04-08'
++ and srcpart2.hr = 11
++PREHOOK: type: QUERY
++POSTHOOK: query: EXPLAIN select *
++ from srcpart
++ join srcpart_date on (srcpart.ds = srcpart_date.ds)
++ join srcpart2 on (srcpart.hr = srcpart2.hr)
++ where srcpart_date.ds2 = '2008-04-08'
++ and srcpart2.hr = 11
++POSTHOOK: type: QUERY
++STAGE DEPENDENCIES:
++  Stage-2 is a root stage
++  Stage-3 depends on stages: Stage-2
++  Stage-1 depends on stages: Stage-3
++  Stage-0 depends on stages: Stage-1
++
++STAGE PLANS:
++  Stage: Stage-2
++    Spark
++#### A masked pattern was here ####
++      Vertices:
++        Map 5 
++            Map Operator Tree:
++                TableScan
++                  alias: srcpart2
++                  filterExpr: (hr = 11) (type: boolean)
++                  Statistics: Num rows: 2000 Data size: 49248 Basic stats: COMPLETE Column stats: NONE
++                  Filter Operator
++                    predicate: (hr = 11) (type: boolean)
++                    Statistics: Num rows: 1000 Data size: 24624 Basic stats: COMPLETE Column stats: NONE
++                    Select Operator
++                      expressions: '11' (type: string)
++                      outputColumnNames: _col0
++                      Statistics: Num rows: 1000 Data size: 24624 Basic stats: COMPLETE Column stats: NONE
++                      Group By Operator
++                        keys: _col0 (type: string)
++                        mode: hash
++                        outputColumnNames: _col0
++                        Statistics: Num rows: 1000 Data size: 24624 Basic stats: COMPLETE Column stats: NONE
++                        Spark Partition Pruning Sink Operator
++                          partition key expr: hr
++#### A masked pattern was here ####
++                          Statistics: Num rows: 1000 Data size: 24624 Basic stats: COMPLETE Column stats: NONE
++                          target column name: hr
++                          target work: Map 1
++
++  Stage: Stage-3
++    Spark
++#### A masked pattern was here ####
++      Vertices:
++        Map 3 
++            Map Operator Tree:
++                TableScan
++                  alias: srcpart_date
++                  filterExpr: (ds is not null and (ds2 = '2008-04-08')) (type: boolean)
++                  Statistics: Num rows: 2 Data size: 42 Basic stats: COMPLETE Column stats: NONE
++                  Filter Operator
++                    predicate: (ds is not null and (ds2 = '2008-04-08')) (type: boolean)
++                    Statistics: Num rows: 1 Data size: 21 Basic stats: COMPLETE Column stats: NONE
++                    Spark HashTable Sink Operator
++                      keys:
++                        0 ds (type: string)
++                        1 ds (type: string)
++                    Select Operator
++                      expressions: ds (type: string)
++                      outputColumnNames: _col0
++                      Statistics: Num rows: 1 Data size: 21 Basic stats: COMPLETE Column stats: NONE
++                      Group By Operator
++                        keys: _col0 (type: string)
++                        mode: hash
++                        outputColumnNames: _col0
++                        Statistics: Num rows: 1 Data size: 21 Basic stats: COMPLETE Column stats: NONE
++                        Spark Partition Pruning Sink Operator
++                          partition key expr: ds
++#### A masked pattern was here ####
++                          Statistics: Num rows: 1 Data size: 21 Basic stats: COMPLETE Column stats: NONE
++                          target column name: ds
++                          target work: Map 1
++            Local Work:
++              Map Reduce Local Work
++
++  Stage: Stage-1
++    Spark
++      Edges:
++        Reducer 2 <- Map 1 (PARTITION-LEVEL SORT, 2), Map 4 (PARTITION-LEVEL SORT, 2)
++#### A masked pattern was here ####
++      Vertices:
++        Map 1 
++            Map Operator Tree:
++                TableScan
++                  alias: srcpart
++                  filterExpr: (hr = 11) (type: boolean)
++                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
++                  Map Join Operator
++                    condition map:
++                         Inner Join 0 to 1
++                    keys:
++                      0 ds (type: string)
++                      1 ds (type: string)
++                    outputColumnNames: _col0, _col1, _col2, _col7
++                    input vertices:
++                      1 Map 3
++                    Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
++                    Reduce Output Operator
++                      key expressions: '11' (type: string)
++                      sort order: +
++                      Map-reduce partition columns: '11' (type: string)
++                      Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
++                      value expressions: _col0 (type: string), _col1 (type: string), _col2 (type: string), _col7 (type: string)
++            Local Work:
++              Map Reduce Local Work
++        Map 4 
++            Map Operator Tree:
++                TableScan
++                  alias: srcpart2
++                  filterExpr: (hr = 11) (type: boolean)
++                  Statistics: Num rows: 2000 Data size: 49248 Basic stats: COMPLETE Column stats: NONE
++                  Filter Operator
++                    predicate: (hr = 11) (type: boolean)
++                    Statistics: Num rows: 1000 Data size: 24624 Basic stats: COMPLETE Column stats: NONE
++                    Reduce Output Operator
++                      key expressions: '11' (type: string)
++                      sort order: +
++                      Map-reduce partition columns: '11' (type: string)
++                      Statistics: Num rows: 1000 Data size: 24624 Basic stats: COMPLETE Column stats: NONE
++                      value expressions: key (type: string), value (type: string), ds (type: string)
++        Reducer 2 
++            Reduce Operator Tree:
++              Join Operator
++                condition map:
++                     Inner Join 0 to 1
++                keys:
++                  0 _col3 (type: string)
++                  1 hr (type: string)
++                outputColumnNames: _col0, _col1, _col2, _col7, _col12, _col13, _col14
++                Statistics: Num rows: 1210 Data size: 12854 Basic stats: COMPLETE Column stats: NONE
++                Select Operator
++                  expressions: _col0 (type: string), _col1 (type: string), _col2 (type: string), '11' (type: string), _col7 (type: string), '2008-04-08' (type: string), _col12 (type: string), _col13 (type: string), _col14 (type: string), '11' (type: string)
++                  outputColumnNames: _col0, _col1, _col2, _col3, _col4, _col5, _col6, _col7, _col8, _col9
++                  Statistics: Num rows: 1210 Data size: 12854 Basic stats: COMPLETE Column stats: NONE
++                  File Output Operator
++                    compressed: false
++                    Statistics: Num rows: 1210 Data size: 12854 Basic stats: COMPLETE Column stats: NONE
++                    table:
++                        input format: org.apache.hadoop.mapred.TextInputFormat
++                        output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
++                        serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
++
++  Stage: Stage-0
++    Fetch Operator
++      limit: -1
++      Processor Tree:
++        ListSink
++
++PREHOOK: query: EXPLAIN select *
++ from srcpart
++ join srcpart_date on (srcpart.ds = srcpart_date.ds)
++ join srcpart2 on (srcpart.hr = srcpart2.hr)
++ where srcpart_date.ds2 = '2008-04-08'
++ and srcpart2.hr = 11
++PREHOOK: type: QUERY
++POSTHOOK: query: EXPLAIN select *
++ from srcpart
++ join srcpart_date on (srcpart.ds = srcpart_date.ds)
++ join srcpart2 on (srcpart.hr = srcpart2.hr)
++ where srcpart_date.ds2 = '2008-04-08'
++ and srcpart2.hr = 11
++POSTHOOK: type: QUERY
++STAGE DEPENDENCIES:
++  Stage-2 is a root stage
++  Stage-1 depends on stages: Stage-2
++  Stage-0 depends on stages: Stage-1
++
++STAGE PLANS:
++  Stage: Stage-2
++    Spark
++#### A masked pattern was here ####
++      Vertices:
++        Map 3 
++            Map Operator Tree:
++                TableScan
++                  alias: srcpart_date
++                  filterExpr: (ds is not null and (ds2 = '2008-04-08')) (type: boolean)
++                  Statistics: Num rows: 2 Data size: 42 Basic stats: COMPLETE Column stats: NONE
++                  Filter Operator
++                    predicate: (ds is not null and (ds2 = '2008-04-08')) (type: boolean)
++                    Statistics: Num rows: 1 Data size: 21 Basic stats: COMPLETE Column stats: NONE
++                    Spark HashTable Sink Operator
++                      keys:
++                        0 ds (type: string)
++                        1 ds (type: string)
++                    Select Operator
++                      expressions: ds (type: string)
++                      outputColumnNames: _col0
++                      Statistics: Num rows: 1 Data size: 21 Basic stats: COMPLETE Column stats: NONE
++                      Group By Operator
++                        keys: _col0 (type: string)
++                        mode: hash
++                        outputColumnNames: _col0
++                        Statistics: Num rows: 1 Data size: 21 Basic stats: COMPLETE Column stats: NONE
++                        Spark Partition Pruning Sink Operator
++                          partition key expr: ds
++#### A masked pattern was here ####
++                          Statistics: Num rows: 1 Data size: 21 Basic stats: COMPLETE Column stats: NONE
++                          target column name: ds
++                          target work: Map 1
++            Local Work:
++              Map Reduce Local Work
++
++  Stage: Stage-1
++    Spark
++      Edges:
++        Reducer 2 <- Map 1 (PARTITION-LEVEL SORT, 2), Map 4 (PARTITION-LEVEL SORT, 2)
++#### A masked pattern was here ####
++      Vertices:
++        Map 1 
++            Map Operator Tree:
++                TableScan
++                  alias: srcpart
++                  filterExpr: (hr = 11) (type: boolean)
++                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
++                  Map Join Operator
++                    condition map:
++                         Inner Join 0 to 1
++                    keys:
++                      0 ds (type: string)
++                      1 ds (type: string)
++                    outputColumnNames: _col0, _col1, _col2, _col7
++                    input vertices:
++                      1 Map 3
++                    Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
++                    Reduce Output Operator
++                      key expressions: '11' (type: string)
++                      sort order: +
++                      Map-reduce partition columns: '11' (type: string)
++                      Statistics: Num rows: 1100 Data size: 11686 Basic stats: COMPLETE Column stats: NONE
++                      value expressions: _col0 (type: string), _col1 (type: string), _col2 (type: string), _col7 (type: string)
++            Local Work:
++              Map Reduce Local Work
++        Map 4 
++            Map Operator Tree:
++                TableScan
++                  alias: srcpart2
++                  filterExpr: (hr = 11) (type: boolean)
++                  Statistics: Num rows: 2000 Data size: 49248 Basic stats: COMPLETE Column stats: NONE
++                  Filter Operator
++                    predicate: (hr = 11) (type: boolean)
++                    Statistics: Num rows: 1000 Data size: 24624 Basic stats: COMPLETE Column stats: NONE
++                    Reduce Output Operator
++                      key expressions: '11' (type: string)
++                      sort order: +
++                      Map-reduce partition columns: '11' (type: string)
++                      Statistics: Num rows: 1000 Data size: 24624 Basic stats: COMPLETE Column stats: NONE
++                      value expressions: key (type: string), value (type: string), ds (type: string)
++        Reducer 2 
++            Reduce Operator Tree:
++              Join Operator
++                condition map:
++                     Inner Join 0 to 1
++                keys:
++                  0 _col3 (type: string)
++                  1 hr (type: string)
++                outputColumnNames: _col0, _col1, _col2, _col7, _col12, _col13, _col14
++                Statistics: Num rows: 1210 Data size: 12854 Basic stats: COMPLETE Column stats: NONE
++                Select Operator
++                  expressions: _col0 (type: string), _col1 (type: string), _col2 (type: string), '11' (type: string), _col7 (type: string), '2008-04-08' (type: string), _col12 (type: string), _col13 (type: string), _col14 (type: string), '11' (type: string)
++                  outputColumnNames: _col0, _col1, _col2, _col3, _col4, _col5, _col6, _col7, _col8, _col9
++                  Statistics: Num rows: 1210 Data size: 12854 Basic stats: COMPLETE Column stats: NONE
++                  File Output Operator
++                    compressed: false
++                    Statistics: Num rows: 1210 Data size: 12854 Basic stats: COMPLETE Column stats: NONE
++                    table:
++                        input format: org.apache.hadoop.mapred.TextInputFormat
++                        output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
++                        serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
++
++  Stage: Stage-0
++    Fetch Operator
++      limit: -1
++      Processor Tree:
++        ListSink
++
++PREHOOK: query: drop table srcpart_date
++PREHOOK: type: DROPTABLE
++PREHOOK: Input: default@srcpart_date
++PREHOOK: Output: default@srcpart_date
++POSTHOOK: query: drop table srcpart_date
++POSTHOOK: type: DROPTABLE
++POSTHOOK: Input: default@srcpart_date
++POSTHOOK: Output: default@srcpart_date
++PREHOOK: query: drop table srcpart2
++PREHOOK: type: DROPTABLE
++PREHOOK: Input: default@srcpart2
++PREHOOK: Output: default@srcpart2
++POSTHOOK: query: drop table srcpart2
++POSTHOOK: type: DROPTABLE
++POSTHOOK: Input: default@srcpart2
++POSTHOOK: Output: default@srcpart2
+-- 
+1.7.9.5
+

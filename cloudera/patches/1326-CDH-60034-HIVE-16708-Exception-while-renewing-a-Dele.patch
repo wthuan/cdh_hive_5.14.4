@@ -1,0 +1,62 @@
+From cb6d288b0da28d330cef83069f61c38cdefdee06 Mon Sep 17 00:00:00 2001
+From: Vihang Karajgaonkar <vihang@cloudera.com>
+Date: Wed, 29 Nov 2017 14:01:23 -0800
+Subject: [PATCH 1326/1363] CDH-60034 : HIVE-16708 : Exception while renewing
+ a Delegation Token (Vihang Karajgaonkar, reviewed
+ by Aihua Xu)
+
+Change-Id: Id8b0ce34c9035f867e6fe665ed0a252b5f95e362
+---
+ .../apache/hive/minikdc/TestJdbcWithMiniKdc.java   |   16 ++++++++++++++++
+ .../hive/thrift/DelegationTokenSecretManager.java  |    8 +++++++-
+ 2 files changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdc.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdc.java
+index 416d758..8e6adac 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdc.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdc.java
+@@ -152,6 +152,22 @@ public void testTokenAuth() throws Exception {
+   }
+ 
+   @Test
++  public void testRenewDelegationToken() throws Exception {
++    UserGroupInformation currentUGI = miniHiveKdc.loginUser(MiniHiveKdc.HIVE_TEST_SUPER_USER);
++    hs2Conn = DriverManager.getConnection(miniHS2.getJdbcURL());
++    String currentUser = currentUGI.getUserName();
++    // retrieve token and store in the cache
++    String token = ((HiveConnection) hs2Conn)
++        .getDelegationToken(MiniHiveKdc.HIVE_TEST_USER_1,
++            miniHiveKdc.getFullyQualifiedServicePrincipal(MiniHiveKdc.HIVE_TEST_SUPER_USER));
++    assertTrue(token != null && !token.isEmpty());
++
++    ((HiveConnection) hs2Conn).renewDelegationToken(token);
++
++    hs2Conn.close();
++  }
++
++  @Test
+   public void testCancelRenewTokenFlow() throws Exception {
+     miniHiveKdc.loginUser(MiniHiveKdc.HIVE_TEST_SUPER_USER);
+     hs2Conn = DriverManager.getConnection(miniHS2.getJdbcURL());
+diff --git a/shims/common/src/main/java/org/apache/hadoop/hive/thrift/DelegationTokenSecretManager.java b/shims/common/src/main/java/org/apache/hadoop/hive/thrift/DelegationTokenSecretManager.java
+index 7ce5cb2..2b1ed3e 100644
+--- a/shims/common/src/main/java/org/apache/hadoop/hive/thrift/DelegationTokenSecretManager.java
++++ b/shims/common/src/main/java/org/apache/hadoop/hive/thrift/DelegationTokenSecretManager.java
+@@ -68,7 +68,13 @@ public synchronized void cancelDelegationToken(String tokenStrForm) throws IOExc
+   public synchronized long renewDelegationToken(String tokenStrForm) throws IOException {
+     Token<DelegationTokenIdentifier> t= new Token<DelegationTokenIdentifier>();
+     t.decodeFromUrlString(tokenStrForm);
+-    String user = UserGroupInformation.getCurrentUser().getUserName();
++    //when a token is created the renewer of the token is stored
++    //as shortName in AbstractDelegationTokenIdentifier.setRenewer()
++    //this seems like an inconsistency because while cancelling the token
++    //it uses the shortname to compare the renewer while it does not use
++    //shortname during token renewal. Use getShortUserName() until its fixed
++    //in HADOOP-15068
++    String user = UserGroupInformation.getCurrentUser().getShortUserName();
+     return renewToken(t, user);
+   }
+ 
+-- 
+1.7.9.5
+

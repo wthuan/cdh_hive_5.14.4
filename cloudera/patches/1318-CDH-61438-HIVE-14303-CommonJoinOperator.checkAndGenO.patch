@@ -1,0 +1,62 @@
+From f7935edae549c45d43ec4a03a5b6c88e1c1e1a24 Mon Sep 17 00:00:00 2001
+From: Zhihai Xu <zhihaixu2012@gmail.com>
+Date: Tue, 17 Jan 2017 10:52:39 -0800
+Subject: [PATCH 1318/1363] CDH-61438 HIVE-14303:
+ CommonJoinOperator.checkAndGenObject should
+ return directly to avoid NPE if ExecReducer.close
+ is called twice. (Zhihai Xu, reviewed by Chao
+ Sun)
+
+Conflicts:
+	ql/src/java/org/apache/hadoop/hive/ql/exec/CommonJoinOperator.java
+
+Change-Id: I97179da2494ef382d90a288d2904fe711af63fdf
+---
+ .../hadoop/hive/ql/exec/CommonJoinOperator.java    |   10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/CommonJoinOperator.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/CommonJoinOperator.java
+index 8b3489f..953bee6 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/CommonJoinOperator.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/CommonJoinOperator.java
+@@ -123,6 +123,8 @@
+   protected transient int heartbeatInterval;
+   protected static final int NOTSKIPBIGTABLE = -1;
+ 
++  private transient boolean closeOpCalled = false;
++
+   public CommonJoinOperator() {
+   }
+ 
+@@ -186,6 +188,7 @@ public CommonJoinOperator(CommonJoinOperator<T> clone) {
+   @Override
+   @SuppressWarnings("unchecked")
+   protected void initializeOp(Configuration hconf) throws HiveException {
++    closeOpCalled = false;
+     this.handleSkewJoin = conf.getHandleSkewJoin();
+     this.hconf = hconf;
+ 
+@@ -672,6 +675,12 @@ private void genAllOneUniqueJoinObject()
+   }
+ 
+   protected void checkAndGenObject() throws HiveException {
++    if (closeOpCalled) {
++      LOG.warn("checkAndGenObject is called after operator " +
++          id + " " + getName() + " called closeOp");
++      return;
++    }
++
+     if (condn[0].getType() == JoinDesc.UNIQUE_JOIN) {
+ 
+       // Check if results need to be emitted.
+@@ -772,6 +781,7 @@ protected void reportProgress() {
+    */
+   @Override
+   public void closeOp(boolean abort) throws HiveException {
++    closeOpCalled = true;
+     for (AbstractRowContainer<List<Object>> alw : storage) {
+       if (alw != null) {
+         alw.clearRows(); // clean up the temp files
+-- 
+1.7.9.5
+

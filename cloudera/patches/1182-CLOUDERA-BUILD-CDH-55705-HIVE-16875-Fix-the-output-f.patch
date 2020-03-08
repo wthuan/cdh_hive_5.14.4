@@ -1,0 +1,54 @@
+From 6199abbaefa26b5c382b550fff189ad1fe031cf3 Mon Sep 17 00:00:00 2001
+From: Marta Kuczora <kuczoram@cloudera.com>
+Date: Wed, 28 Jun 2017 14:38:48 +0200
+Subject: [PATCH 1182/1363]  CLOUDERA-BUILD: CDH-55705: HIVE-16875: Fix the
+ output file for the vectorized_ptf q test
+
+Change-Id: Ic33dfb9c4b8ba359aca0404de02d9b31e53f7ec6
+---
+ .../clientpositive/spark/vectorized_ptf.q.out      |    8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/ql/src/test/results/clientpositive/spark/vectorized_ptf.q.out b/ql/src/test/results/clientpositive/spark/vectorized_ptf.q.out
+index 6223812..044a926 100644
+--- a/ql/src/test/results/clientpositive/spark/vectorized_ptf.q.out
++++ b/ql/src/test/results/clientpositive/spark/vectorized_ptf.q.out
+@@ -605,7 +605,7 @@ STAGE PLANS:
+                     name: default.part_orc
+                   name: default.part_orc
+             Truncated Path -> Alias:
+-              /part_orc [p1]
++              /part_orc [j:p1]
+             Execution mode: vectorized
+         Map 5 
+             Map Operator Tree:
+@@ -672,7 +672,7 @@ STAGE PLANS:
+                     name: default.part_orc
+                   name: default.part_orc
+             Truncated Path -> Alias:
+-              /part_orc [p2]
++              /part_orc [j:p2]
+             Execution mode: vectorized
+         Reducer 2 
+             Needs Tagging: true
+@@ -4206,7 +4206,7 @@ STAGE PLANS:
+                     name: default.part_orc
+                   name: default.part_orc
+             Truncated Path -> Alias:
+-              /part_orc [part_orc]
++              /part_orc [sub1:part_orc]
+             Execution mode: vectorized
+         Reducer 2 
+             Needs Tagging: false
+@@ -5290,7 +5290,7 @@ STAGE PLANS:
+                     name: default.part_orc
+                   name: default.part_orc
+             Truncated Path -> Alias:
+-              /part_orc [part_orc]
++              /part_orc [mfgr_price_view:part_orc]
+             Execution mode: vectorized
+         Reducer 2 
+             Needs Tagging: false
+-- 
+1.7.9.5
+

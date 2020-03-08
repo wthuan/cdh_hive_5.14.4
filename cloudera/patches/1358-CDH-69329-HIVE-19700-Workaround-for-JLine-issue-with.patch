@@ -1,0 +1,64 @@
+From 6b3910ecf8195515f09a624d84352c1cb69a701d Mon Sep 17 00:00:00 2001
+From: Naveen Gangam <ngangam@apache.org>
+Date: Mon, 4 Jun 2018 10:25:07 -0400
+Subject: [PATCH 1358/1363] CDH-69329: HIVE-19700: Workaround for JLine issue
+ with UnsupportedTerminal (Naveen Gangam, reviewed
+ by Yongzhi Chen)
+
+Conflicts:
+	beeline/src/java/org/apache/hive/beeline/BeeLine.java
+	beeline/src/java/org/apache/hive/beeline/Commands.java
+
+Change-Id: I998cf5cb102e0f9a4299d8a62be5d8d2b150e5ab
+---
+ .../src/java/org/apache/hive/beeline/BeeLine.java  |    5 ++++-
+ .../src/java/org/apache/hive/beeline/Commands.java |    5 ++++-
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/beeline/src/java/org/apache/hive/beeline/BeeLine.java b/beeline/src/java/org/apache/hive/beeline/BeeLine.java
+index 77def55..b32d8bf 100644
+--- a/beeline/src/java/org/apache/hive/beeline/BeeLine.java
++++ b/beeline/src/java/org/apache/hive/beeline/BeeLine.java
+@@ -997,12 +997,15 @@ private int executeFile(String fileName) {
+ 
+   private int execute(ConsoleReader reader, boolean exitOnError) {
+     String line;
++    Character mask = (System.getProperty("jline.terminal", "").equals("jline.UnsupportedTerminal")) ? null
++                       : ConsoleReader.NULL_MASK;
++
+     while (!exit) {
+       try {
+         // Execute one instruction; terminate on executing a script if there is an error
+         // in silent mode, prevent the query and prompt being echoed back to terminal
+         line = (getOpts().isSilent() && getOpts().getScriptFile() != null) ? reader
+-            .readLine(null, ConsoleReader.NULL_MASK) : reader.readLine(getPrompt());
++            .readLine(null, mask) : reader.readLine(getPrompt());
+ 
+         // trim line
+         line = (line == null) ? null : line.trim();
+diff --git a/beeline/src/java/org/apache/hive/beeline/Commands.java b/beeline/src/java/org/apache/hive/beeline/Commands.java
+index 343da49..51a1772 100644
+--- a/beeline/src/java/org/apache/hive/beeline/Commands.java
++++ b/beeline/src/java/org/apache/hive/beeline/Commands.java
+@@ -1059,6 +1059,9 @@ public String handleMultiLineCmd(String line) throws IOException {
+     //When using -e, console reader is not initialized and command is always a single line
+     int[] startQuote = {-1};
+     line = HiveStringUtils.removeComments(line, startQuote);
++
++    Character mask = (System.getProperty("jline.terminal", "").equals("jline.UnsupportedTerminal")) ? null
++                       : jline.console.ConsoleReader.NULL_MASK;
+     while (beeLine.getConsoleReader() != null && !(line.trim().endsWith(";")) && beeLine.getOpts().isAllowMultiLineCommand()) {
+       StringBuilder prompt = new StringBuilder(beeLine.getPrompt());
+       if (!beeLine.getOpts().isSilent()) {
+@@ -1071,7 +1074,7 @@ public String handleMultiLineCmd(String line) throws IOException {
+ 
+       String extra;
+       if (beeLine.getOpts().isSilent() && beeLine.getOpts().getScriptFile() != null) {
+-        extra = beeLine.getConsoleReader().readLine(null, jline.console.ConsoleReader.NULL_MASK);
++        extra = beeLine.getConsoleReader().readLine(null, mask);
+       } else {
+         extra = beeLine.getConsoleReader().readLine(prompt.toString());
+       }
+-- 
+1.7.9.5
+

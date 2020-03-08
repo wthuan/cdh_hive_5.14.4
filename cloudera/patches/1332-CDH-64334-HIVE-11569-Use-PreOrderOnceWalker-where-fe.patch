@@ -1,0 +1,202 @@
+From 0f394f7ef32c6e317b4337329cf6b5fc910073a2 Mon Sep 17 00:00:00 2001
+From: Ashutosh Chauhan <hashutosh@apache.org>
+Date: Tue, 18 Aug 2015 09:13:59 -0700
+Subject: [PATCH 1332/1363] CDH-64334: HIVE-11569 : Use PreOrderOnceWalker
+ where feasible (Ashutosh Chauhan via Jesus
+ Camacho Rodriguez)   Also only pick up
+ PreOrderOnceWalker.java from HIVE-11460
+
+Change-Id: I7b33d54f0dfb6322b134a1e4d890a59fc2167622
+---
+ .../hadoop/hive/ql/lib/PreOrderOnceWalker.java     |   61 ++++++++++++++++++++
+ .../ql/optimizer/index/RewriteCanApplyCtx.java     |    8 +--
+ .../optimizer/physical/NullScanTaskDispatcher.java |    6 +-
+ .../hive/ql/optimizer/physical/Vectorizer.java     |    3 +-
+ .../hadoop/hive/ql/ppd/SyntheticJoinPredicate.java |    4 +-
+ 5 files changed, 72 insertions(+), 10 deletions(-)
+ create mode 100644 ql/src/java/org/apache/hadoop/hive/ql/lib/PreOrderOnceWalker.java
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/lib/PreOrderOnceWalker.java b/ql/src/java/org/apache/hadoop/hive/ql/lib/PreOrderOnceWalker.java
+new file mode 100644
+index 0000000..06e144e
+--- /dev/null
++++ b/ql/src/java/org/apache/hadoop/hive/ql/lib/PreOrderOnceWalker.java
+@@ -0,0 +1,61 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *    http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.hadoop.hive.ql.lib;
++
++import org.apache.hadoop.hive.ql.parse.SemanticException;
++
++/**
++ * Graph walker this class takes list of starting nodes and walks them in pre-order.
++ * If a rule fires up against a given node, we do not try to apply the rule
++ * on its children.
++ */
++public class PreOrderOnceWalker extends PreOrderWalker {
++
++  public PreOrderOnceWalker(Dispatcher disp) {
++    super(disp);
++  }
++
++  /**
++   * Walk the current operator and its descendants.
++   * 
++   * @param nd
++   *          current operator in the graph
++   * @throws SemanticException
++   */
++  @Override
++  public void walk(Node nd) throws SemanticException {
++    opStack.push(nd);
++    dispatch(nd, opStack);
++
++    // The rule has been applied, we bail out
++    if (retMap.get(nd) != null) {
++      opStack.pop();
++      return;
++    }
++
++    // move all the children to the front of queue
++    if (nd.getChildren() != null) {
++      for (Node n : nd.getChildren()) {
++        walk(n);
++      }
++    }
++
++    opStack.pop();
++  }
++
++}
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/index/RewriteCanApplyCtx.java b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/index/RewriteCanApplyCtx.java
+index b56b608..988bb29 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/index/RewriteCanApplyCtx.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/index/RewriteCanApplyCtx.java
+@@ -38,7 +38,7 @@
+ import org.apache.hadoop.hive.ql.lib.Node;
+ import org.apache.hadoop.hive.ql.lib.NodeProcessor;
+ import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
+-import org.apache.hadoop.hive.ql.lib.PreOrderWalker;
++import org.apache.hadoop.hive.ql.lib.PreOrderOnceWalker;
+ import org.apache.hadoop.hive.ql.lib.Rule;
+ import org.apache.hadoop.hive.ql.lib.RuleRegExp;
+ import org.apache.hadoop.hive.ql.parse.ParseContext;
+@@ -75,7 +75,7 @@ public static RewriteCanApplyCtx getInstance(ParseContext parseContext){
+   private String baseTableName;
+   private String indexTableName;
+   private String aggFunction;
+-  
++
+   private TableScanOperator tableScanOperator;
+   private List<SelectOperator> selectOperators;
+   private List<GroupByOperator> groupByOperators;
+@@ -156,7 +156,7 @@ public  ParseContext getParseContext() {
+   /**
+    * This method walks all the nodes starting from topOp TableScanOperator node
+    * and invokes methods from {@link RewriteCanApplyProcFactory} for each of the rules
+-   * added to the opRules map. We use the {@link PreOrderWalker} for a pre-order
++   * added to the opRules map. We use the {@link PreOrderOnceWalker} for a pre-order
+    * traversal of the operator tree.
+    *
+    * The methods from {@link RewriteCanApplyProcFactory} set appropriate values in
+@@ -180,7 +180,7 @@ void populateRewriteVars(TableScanOperator topOp)
+     // The dispatcher fires the processor corresponding to the closest matching
+     // rule and passes the context along
+     Dispatcher disp = new DefaultRuleDispatcher(getDefaultProc(), opRules, this);
+-    GraphWalker ogw = new PreOrderWalker(disp);
++    GraphWalker ogw = new PreOrderOnceWalker(disp);
+ 
+     // Create a list of topop nodes
+     List<Node> topNodes = new ArrayList<Node>();
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/NullScanTaskDispatcher.java b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/NullScanTaskDispatcher.java
+index 857aeeb..e3d92ff 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/NullScanTaskDispatcher.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/NullScanTaskDispatcher.java
+@@ -43,7 +43,7 @@
+ import org.apache.hadoop.hive.ql.lib.GraphWalker;
+ import org.apache.hadoop.hive.ql.lib.Node;
+ import org.apache.hadoop.hive.ql.lib.NodeProcessor;
+-import org.apache.hadoop.hive.ql.lib.PreOrderWalker;
++import org.apache.hadoop.hive.ql.lib.PreOrderOnceWalker;
+ import org.apache.hadoop.hive.ql.lib.Rule;
+ import org.apache.hadoop.hive.ql.optimizer.physical.MetadataOnlyOptimizer.WalkerCtx;
+ import org.apache.hadoop.hive.ql.parse.ParseContext;
+@@ -61,7 +61,7 @@
+ public class NullScanTaskDispatcher implements Dispatcher {
+ 
+   static final Log LOG = LogFactory.getLog(NullScanTaskDispatcher.class.getName());
+-  
++
+   private final PhysicalContext physicalContext;
+   private final Map<Rule, NodeProcessor> rules;
+ 
+@@ -178,7 +178,7 @@ public int compare(MapWork o1, MapWork o2) {
+       // The dispatcher fires the processor corresponding to the closest
+       // matching rule and passes the context along
+       Dispatcher disp = new DefaultRuleDispatcher(null, rules, walkerCtx);
+-      GraphWalker ogw = new PreOrderWalker(disp);
++      GraphWalker ogw = new PreOrderOnceWalker(disp);
+ 
+       // Create a list of topOp nodes
+       ArrayList<Node> topNodes = new ArrayList<Node>();
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/Vectorizer.java b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/Vectorizer.java
+index 41208db..743bd5b 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/Vectorizer.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/Vectorizer.java
+@@ -54,6 +54,7 @@
+ import org.apache.hadoop.hive.ql.lib.Node;
+ import org.apache.hadoop.hive.ql.lib.NodeProcessor;
+ import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
++import org.apache.hadoop.hive.ql.lib.PreOrderOnceWalker;
+ import org.apache.hadoop.hive.ql.lib.PreOrderWalker;
+ import org.apache.hadoop.hive.ql.lib.Rule;
+ import org.apache.hadoop.hive.ql.lib.RuleRegExp;
+@@ -382,7 +383,7 @@ private void vectorizeMapWork(MapWork mapWork) throws SemanticException {
+       MapWorkVectorizationNodeProcessor vnp = new MapWorkVectorizationNodeProcessor(mapWork);
+       addMapWorkRules(opRules, vnp);
+       Dispatcher disp = new DefaultRuleDispatcher(vnp, opRules, null);
+-      GraphWalker ogw = new PreOrderWalker(disp);
++      GraphWalker ogw = new PreOrderOnceWalker(disp);
+       // iterator the mapper operator tree
+       ArrayList<Node> topNodes = new ArrayList<Node>();
+       topNodes.addAll(mapWork.getAliasToWork().values());
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/ppd/SyntheticJoinPredicate.java b/ql/src/java/org/apache/hadoop/hive/ql/ppd/SyntheticJoinPredicate.java
+index 7d3bee0..0331179 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/ppd/SyntheticJoinPredicate.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/ppd/SyntheticJoinPredicate.java
+@@ -43,7 +43,7 @@
+ import org.apache.hadoop.hive.ql.lib.Node;
+ import org.apache.hadoop.hive.ql.lib.NodeProcessor;
+ import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
+-import org.apache.hadoop.hive.ql.lib.PreOrderWalker;
++import org.apache.hadoop.hive.ql.lib.PreOrderOnceWalker;
+ import org.apache.hadoop.hive.ql.lib.Rule;
+ import org.apache.hadoop.hive.ql.lib.RuleRegExp;
+ import org.apache.hadoop.hive.ql.optimizer.Transform;
+@@ -92,7 +92,7 @@ public ParseContext transform(ParseContext pctx) throws SemanticException {
+     // rule and passes the context along
+     SyntheticContext context = new SyntheticContext(pctx);
+     Dispatcher disp = new DefaultRuleDispatcher(null, opRules, context);
+-    GraphWalker ogw = new PreOrderWalker(disp);
++    GraphWalker ogw = new PreOrderOnceWalker(disp);
+ 
+     // Create a list of top op nodes
+     List<Node> topNodes = new ArrayList<Node>();
+-- 
+1.7.9.5
+

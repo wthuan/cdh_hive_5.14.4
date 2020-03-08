@@ -1,0 +1,409 @@
+From dbed54f9ed52a274284b46bb0bce36f9eadcc54b Mon Sep 17 00:00:00 2001
+From: Sahil Takiar <takiar.sahil@gmail.com>
+Date: Tue, 22 Aug 2017 12:51:03 -0700
+Subject: [PATCH 1251/1363] CDH-58278: HIVE-17132: Add InterfaceAudience and
+ InterfaceStability annotations for UDF APIs
+ (Sahil Takiar, reviewed by Ashutosh Chauhan)
+
+(cherry picked from commit 330c62f842cd145e559e83fa00ea26bdcbd7f7d3)
+
+Conflicts:
+	ql/src/java/org/apache/hadoop/hive/ql/exec/MapredContext.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/ptf/WindowFrameDef.java
+	ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDAFEvaluator.java
+
+Change-Id: I20f95d93afb8ac2c534c79e3854b24de7c4f8cb2
+---
+ .../apache/hadoop/hive/ql/exec/Description.java    |    5 +++++
+ .../java/org/apache/hadoop/hive/ql/exec/UDF.java   |    3 +++
+ .../hadoop/hive/ql/exec/UDFArgumentException.java  |    4 ++++
+ .../hive/ql/exec/UDFArgumentLengthException.java   |    5 +++++
+ .../hive/ql/exec/UDFArgumentTypeException.java     |    6 +++++-
+ .../hadoop/hive/ql/exec/UDFMethodResolver.java     |    1 +
+ .../hadoop/hive/ql/metadata/HiveException.java     |    5 ++++-
+ .../hadoop/hive/ql/parse/SemanticException.java    |    5 ++++-
+ .../hadoop/hive/ql/plan/ptf/WindowFrameDef.java    |    4 ++++
+ .../udf/generic/AbstractGenericUDAFResolver.java   |    1 +
+ .../hadoop/hive/ql/udf/generic/Collector.java      |    4 ++++
+ .../hive/ql/udf/generic/GenericUDAFEvaluator.java  |    8 ++++++++
+ .../ql/udf/generic/GenericUDAFParameterInfo.java   |    4 ++++
+ .../hive/ql/udf/generic/GenericUDAFResolver2.java  |    1 +
+ .../hadoop/hive/ql/udf/generic/GenericUDF.java     |    6 ++++++
+ .../hadoop/hive/ql/udf/generic/GenericUDTF.java    |    5 ++++-
+ .../objectinspector/ObjectInspectorConverters.java |    4 ++++
+ .../objectinspector/PrimitiveObjectInspector.java  |    4 ++++
+ 18 files changed, 71 insertions(+), 4 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/Description.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/Description.java
+index a9af71a..536060e 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/Description.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/Description.java
+@@ -18,6 +18,9 @@
+ 
+ package org.apache.hadoop.hive.ql.exec;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ import java.lang.annotation.Retention;
+ import java.lang.annotation.RetentionPolicy;
+ 
+@@ -25,6 +28,8 @@
+  * Description.
+  *
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ @Retention(RetentionPolicy.RUNTIME)
+ public @interface Description {
+   String value() default "_FUNC_ is undocumented";
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/UDF.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/UDF.java
+index f8bc889..f2b4009 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/UDF.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/UDF.java
+@@ -52,7 +52,10 @@
+  *
+  * @see Description
+  * @see UDFType
++ *
++ * @deprecated use {@link org.apache.hadoop.hive.ql.udf.generic.GenericUDF}
+  */
++@Deprecated
+ @UDFType(deterministic = true)
+ public class UDF {
+ 
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFArgumentException.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFArgumentException.java
+index de2d1d9..df738d0 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFArgumentException.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFArgumentException.java
+@@ -25,6 +25,8 @@
+ import java.util.Comparator;
+ import java.util.List;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.ql.parse.SemanticException;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
+ import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
+@@ -32,6 +34,8 @@
+ /**
+  * exception class, thrown when udf argument have something wrong.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class UDFArgumentException extends SemanticException {
+ 
+   public UDFArgumentException() {
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFArgumentLengthException.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFArgumentLengthException.java
+index 5ce2d5e..1a5bd9b 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFArgumentLengthException.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFArgumentLengthException.java
+@@ -18,9 +18,14 @@
+ 
+ package org.apache.hadoop.hive.ql.exec;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * exception class, thrown when udf arguments have wrong length.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class UDFArgumentLengthException extends UDFArgumentException {
+   public UDFArgumentLengthException(String message) {
+     super(message);
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFArgumentTypeException.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFArgumentTypeException.java
+index 70a9296..8f8cc93 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFArgumentTypeException.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFArgumentTypeException.java
+@@ -18,10 +18,14 @@
+ 
+ package org.apache.hadoop.hive.ql.exec;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * exception class, thrown when udf arguments have wrong types.
+  */
+-
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class UDFArgumentTypeException extends UDFArgumentException {
+ 
+   int argumentId;
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFMethodResolver.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFMethodResolver.java
+index 4a6f0de..84cfc04 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFMethodResolver.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/UDFMethodResolver.java
+@@ -36,6 +36,7 @@
+  * simply have to extend UDFBaseNumericOp class. For the default resolution the
+  * UDF implementation simply needs to extend the UDF class.
+  */
++@Deprecated
+ public interface UDFMethodResolver {
+ 
+   /**
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/metadata/HiveException.java b/ql/src/java/org/apache/hadoop/hive/ql/metadata/HiveException.java
+index a23d8c0..e756445 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/metadata/HiveException.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/metadata/HiveException.java
+@@ -18,12 +18,15 @@
+ 
+ package org.apache.hadoop.hive.ql.metadata;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.ql.ErrorMsg;
+ 
+ /**
+  * Generic exception class for Hive.
+  */
+-
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class HiveException extends Exception {
+   /**
+    * Standard predefined message with error code and possibly SQL State, etc.
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/parse/SemanticException.java b/ql/src/java/org/apache/hadoop/hive/ql/parse/SemanticException.java
+index cac5582..0a5f9e1 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/parse/SemanticException.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/parse/SemanticException.java
+@@ -18,13 +18,16 @@
+ 
+ package org.apache.hadoop.hive.ql.parse;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.ql.ErrorMsg;
+ import org.apache.hadoop.hive.ql.metadata.HiveException;
+ 
+ /**
+  * Exception from SemanticAnalyzer.
+  */
+-
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class SemanticException extends HiveException {
+ 
+   private static final long serialVersionUID = 1L;
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/plan/ptf/WindowFrameDef.java b/ql/src/java/org/apache/hadoop/hive/ql/plan/ptf/WindowFrameDef.java
+index 5a85f69..bf91d70 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/plan/ptf/WindowFrameDef.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/plan/ptf/WindowFrameDef.java
+@@ -18,7 +18,11 @@
+ 
+ package org.apache.hadoop.hive.ql.plan.ptf;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class WindowFrameDef {
+   private BoundaryDef start;
+   private BoundaryDef end;
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/AbstractGenericUDAFResolver.java b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/AbstractGenericUDAFResolver.java
+index 4d4e61d..f104891 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/AbstractGenericUDAFResolver.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/AbstractGenericUDAFResolver.java
+@@ -30,6 +30,7 @@
+  * <tt>GenericUDAFParameterInfo</tt> interface.
+  *
+  */
++@Deprecated
+ public abstract class AbstractGenericUDAFResolver
+     implements GenericUDAFResolver2
+ {
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/Collector.java b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/Collector.java
+index c73f2de..f58c23d 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/Collector.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/Collector.java
+@@ -18,11 +18,15 @@
+ 
+ package org.apache.hadoop.hive.ql.udf.generic;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.ql.metadata.HiveException;
+ 
+ /**
+  * Collector gets data from a source.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface Collector {
+   /**
+    * Other classes will call collect() with the data that it has.
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDAFEvaluator.java b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDAFEvaluator.java
+index 4b22a5b..e181acd 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDAFEvaluator.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDAFEvaluator.java
+@@ -21,6 +21,8 @@
+ import java.io.Closeable;
+ import java.io.IOException;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.ql.exec.MapredContext;
+ import org.apache.hadoop.hive.ql.metadata.HiveException;
+ import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
+@@ -40,9 +42,13 @@
+  * signature - for example, it's easy to write a GenericUDAF that accepts
+  * array<int>, array<array<int>> and so on (arbitrary levels of nesting).
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ @UDFType(deterministic = true)
+ public abstract class GenericUDAFEvaluator implements Closeable {
+ 
++  @InterfaceAudience.Public
++  @InterfaceStability.Stable
+   public static @interface AggregationType {
+     boolean estimable() default false;
+   }
+@@ -144,6 +150,8 @@ public ObjectInspector init(Mode m, ObjectInspector[] parameters) throws HiveExc
+   public static interface AggregationBuffer {
+   };
+ 
++  @InterfaceAudience.Public
++  @InterfaceStability.Stable
+   public static abstract class AbstractAggregationBuffer implements AggregationBuffer {
+     /**
+      * Estimate the size of memory which is occupied by aggregation buffer.
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDAFParameterInfo.java b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDAFParameterInfo.java
+index 6a62d7c..811a244 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDAFParameterInfo.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDAFParameterInfo.java
+@@ -17,6 +17,8 @@
+  */
+ package org.apache.hadoop.hive.ql.udf.generic;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+ import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
+ 
+@@ -40,6 +42,8 @@
+  * data bound to parameter types for <tt>DISTINCT</tt> implementation is
+  * handled by the framework and not the <tt>COUNT</tt> UDAF implementation.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface GenericUDAFParameterInfo {
+ 
+   /**
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDAFResolver2.java b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDAFResolver2.java
+index d66b29a..b0489e3 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDAFResolver2.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDAFResolver2.java
+@@ -37,6 +37,7 @@
+  * data bound to parameter types for <tt>DISTINCT</tt> implementation is
+  * handled by the framework and not the <tt>COUNT</tt> UDAF implementation.
+  */
++@Deprecated
+ @SuppressWarnings("deprecation")
+ public interface GenericUDAFResolver2 extends GenericUDAFResolver {
+ 
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDF.java b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDF.java
+index 20bf9ad..b34d681 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDF.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDF.java
+@@ -24,6 +24,8 @@
+ import java.text.ParseException;
+ import java.util.Date;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
+ import org.apache.hadoop.hive.ql.exec.MapredContext;
+ import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
+@@ -62,6 +64,8 @@
+  * array<int>, array<array<int>> and so on (arbitrary levels of nesting). 4. It
+  * can do short-circuit evaluations using DeferedObject.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ @UDFType(deterministic = true)
+ public abstract class GenericUDF implements Closeable {
+ 
+@@ -72,6 +76,8 @@
+    * A Defered Object allows us to do lazy-evaluation and short-circuiting.
+    * GenericUDF use DeferedObject to pass arguments.
+    */
++  @InterfaceAudience.Public
++  @InterfaceStability.Stable
+   public static interface DeferredObject {
+     void prepare(int version) throws HiveException;
+     Object get() throws HiveException;
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDTF.java b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDTF.java
+index a93a264..fa74a52 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDTF.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDTF.java
+@@ -20,6 +20,8 @@
+ 
+ import java.util.List;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.ql.exec.MapredContext;
+ import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
+ import org.apache.hadoop.hive.ql.metadata.HiveException;
+@@ -33,7 +35,8 @@
+  * Generates a variable number of output rows for a single input row. Useful for
+  * explode(array)...
+  */
+-
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class GenericUDTF {
+   Collector collector = null;
+ 
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ObjectInspectorConverters.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ObjectInspectorConverters.java
+index 39a9d1a..308373d 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ObjectInspectorConverters.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ObjectInspectorConverters.java
+@@ -22,6 +22,8 @@
+ import java.util.List;
+ import java.util.Map;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.primitive.JavaStringObjectInspector;
+ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorConverter;
+ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
+@@ -51,6 +53,8 @@
+   /**
+    * A converter which will convert objects with one ObjectInspector to another.
+    */
++  @InterfaceAudience.Public
++  @InterfaceStability.Stable
+   public static interface Converter {
+     Object convert(Object input);
+   }
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/PrimitiveObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/PrimitiveObjectInspector.java
+index 05aed0a..40dc95c 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/PrimitiveObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/PrimitiveObjectInspector.java
+@@ -17,6 +17,8 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
+ 
+ 
+@@ -24,6 +26,8 @@
+  * PrimitiveObjectInspector.
+  *
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface PrimitiveObjectInspector extends ObjectInspector {
+ 
+   /**
+-- 
+1.7.9.5
+

@@ -1,0 +1,328 @@
+From 5ded7463ae6a0d38afe15b0aac79303a93338c39 Mon Sep 17 00:00:00 2001
+From: Prasanth Jayachandran <j.prasanth.j@gmail.com>
+Date: Tue, 1 Dec 2015 15:25:41 -0600
+Subject: [PATCH 1213/1363] CDH-57077: HIVE-12551: Fix several kryo exceptions
+ in branch-1 (Prasanth Jayachandran reviewed by
+ Sergey Shelukhin)
+
+Conflicts:
+	ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
+
+Change-Id: I617179a17361c15f12911c34da3cec323c4ff905
+---
+ .../org/apache/hadoop/hive/ql/exec/Utilities.java  |  129 +++++++++++++++++++-
+ .../queries/clientpositive/kryo_arrays_as_list.q   |   29 +++++
+ .../clientpositive/kryo_arrays_as_list.q.out       |   79 ++++++++++++
+ 3 files changed, 236 insertions(+), 1 deletion(-)
+ create mode 100644 ql/src/test/queries/clientpositive/kryo_arrays_as_list.q
+ create mode 100644 ql/src/test/results/clientpositive/kryo_arrays_as_list.q.out
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
+index edb8976..05afde3 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
+@@ -40,6 +40,8 @@
+ import java.io.OutputStream;
+ import java.io.Serializable;
+ import java.io.UnsupportedEncodingException;
++import java.lang.reflect.Array;
++import java.lang.reflect.Field;
+ import java.net.URI;
+ import java.net.URL;
+ import java.net.URLClassLoader;
+@@ -182,6 +184,9 @@
+ import org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe;
+ import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
+ import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
++import org.apache.hadoop.hive.serde2.objectinspector.StandardConstantListObjectInspector;
++import org.apache.hadoop.hive.serde2.objectinspector.StandardConstantMapObjectInspector;
++import org.apache.hadoop.hive.serde2.objectinspector.StandardConstantStructObjectInspector;
+ import org.apache.hadoop.hive.shims.ShimLoader;
+ import org.apache.hadoop.io.IOUtils;
+ import org.apache.hadoop.io.SequenceFile;
+@@ -917,6 +922,92 @@ public void write(Kryo kryo, Output output, CommonToken token) {
+     }
+   }
+ 
++  /**
++   * A kryo {@link Serializer} for lists created via {@link Arrays#asList(Object...)}.
++   * <p>
++   * Note: This serializer does not support cyclic references, so if one of the objects
++   * gets set the list as attribute this might cause an error during deserialization.
++   * </p>
++   * <p/>
++   * This is from kryo-serializers package. Added explicitly to avoid classpath issues.
++   */
++  private static class ArraysAsListSerializer
++      extends com.esotericsoftware.kryo.Serializer<List<?>> {
++
++    private Field _arrayField;
++
++    public ArraysAsListSerializer() {
++      try {
++        _arrayField = Class.forName("java.util.Arrays$ArrayList").getDeclaredField("a");
++        _arrayField.setAccessible(true);
++      } catch (final Exception e) {
++        throw new RuntimeException(e);
++      }
++      // Immutable causes #copy(obj) to return the original object
++      setImmutable(true);
++    }
++
++    @Override
++    public List<?> read(final Kryo kryo, final Input input, final Class<List<?>> type) {
++      final int length = input.readInt(true);
++      Class<?> componentType = kryo.readClass(input).getType();
++      if (componentType.isPrimitive()) {
++        componentType = getPrimitiveWrapperClass(componentType);
++      }
++      try {
++        final Object items = Array.newInstance(componentType, length);
++        for (int i = 0; i < length; i++) {
++          Array.set(items, i, kryo.readClassAndObject(input));
++        }
++        return Arrays.asList((Object[]) items);
++      } catch (final Exception e) {
++        throw new RuntimeException(e);
++      }
++    }
++
++    @Override
++    public void write(final Kryo kryo, final Output output, final List<?> obj) {
++      try {
++        final Object[] array = (Object[]) _arrayField.get(obj);
++        output.writeInt(array.length, true);
++        final Class<?> componentType = array.getClass().getComponentType();
++        kryo.writeClass(output, componentType);
++        for (final Object item : array) {
++          kryo.writeClassAndObject(output, item);
++        }
++      } catch (final RuntimeException e) {
++        // Don't eat and wrap RuntimeExceptions because the ObjectBuffer.write...
++        // handles SerializationException specifically (resizing the buffer)...
++        throw e;
++      } catch (final Exception e) {
++        throw new RuntimeException(e);
++      }
++    }
++
++    private Class<?> getPrimitiveWrapperClass(final Class<?> c) {
++      if (c.isPrimitive()) {
++        if (c.equals(Long.TYPE)) {
++          return Long.class;
++        } else if (c.equals(Integer.TYPE)) {
++          return Integer.class;
++        } else if (c.equals(Double.TYPE)) {
++          return Double.class;
++        } else if (c.equals(Float.TYPE)) {
++          return Float.class;
++        } else if (c.equals(Boolean.TYPE)) {
++          return Boolean.class;
++        } else if (c.equals(Character.TYPE)) {
++          return Character.class;
++        } else if (c.equals(Short.TYPE)) {
++          return Short.class;
++        } else if (c.equals(Byte.TYPE)) {
++          return Byte.class;
++        }
++      }
++      return c;
++    }
++  }
++
+   private static class PathSerializer extends com.esotericsoftware.kryo.Serializer<Path> {
+ 
+     @Override
+@@ -1129,10 +1220,22 @@ protected synchronized Kryo initialValue() {
+       kryo.register(java.sql.Date.class, new SqlDateSerializer());
+       kryo.register(java.sql.Timestamp.class, new TimestampSerializer());
+       kryo.register(Path.class, new PathSerializer());
++      kryo.register( Arrays.asList( "" ).getClass(), new ArraysAsListSerializer() );
+       kryo.setInstantiatorStrategy(new StdInstantiatorStrategy());
+       removeField(kryo, Operator.class, "colExprMap");
+-      removeField(kryo, ColumnInfo.class, "objectInspector");
+       kryo.register(CopyOnFirstWriteProperties.class, new CopyOnFirstWritePropertiesSerializer());
++      kryo.register(MapWork.class);
++      kryo.register(ReduceWork.class);
++      kryo.register(TableDesc.class);
++      kryo.register(TableScanOperator.class);
++      kryo.register(UnionOperator.class);
++      kryo.register(FileSinkOperator.class);
++      kryo.register(HiveIgnoreKeyTextOutputFormat.class);
++      kryo.register(StandardConstantListObjectInspector.class);
++      kryo.register(StandardConstantMapObjectInspector.class);
++      kryo.register(StandardConstantStructObjectInspector.class);
++      kryo.register(SequenceFileInputFormat.class);
++      kryo.register(HiveSequenceFileOutputFormat.class);
+       return kryo;
+     };
+   };
+@@ -1151,6 +1254,7 @@ protected synchronized Kryo initialValue() {
+       kryo.register(java.sql.Date.class, new SqlDateSerializer());
+       kryo.register(java.sql.Timestamp.class, new TimestampSerializer());
+       kryo.register(Path.class, new PathSerializer());
++      kryo.register( Arrays.asList( "" ).getClass(), new ArraysAsListSerializer() );
+       kryo.setInstantiatorStrategy(new StdInstantiatorStrategy());
+       removeField(kryo, Operator.class, "colExprMap");
+       removeField(kryo, ColumnInfo.class, "objectInspector");
+@@ -1161,6 +1265,15 @@ protected synchronized Kryo initialValue() {
+       kryo.register(TableDesc.class);
+       kryo.register(Pair.class);
+       kryo.register(CopyOnFirstWriteProperties.class, new CopyOnFirstWritePropertiesSerializer());
++      kryo.register(TableScanOperator.class);
++      kryo.register(UnionOperator.class);
++      kryo.register(FileSinkOperator.class);
++      kryo.register(HiveIgnoreKeyTextOutputFormat.class);
++      kryo.register(StandardConstantListObjectInspector.class);
++      kryo.register(StandardConstantMapObjectInspector.class);
++      kryo.register(StandardConstantStructObjectInspector.class);
++      kryo.register(SequenceFileInputFormat.class);
++      kryo.register(HiveSequenceFileOutputFormat.class);
+       return kryo;
+     };
+   };
+@@ -1175,7 +1288,21 @@ protected synchronized Kryo initialValue() {
+       kryo.register(java.sql.Timestamp.class, new TimestampSerializer());
+       kryo.register(Path.class, new PathSerializer());
+       kryo.register(CopyOnFirstWriteProperties.class, new CopyOnFirstWritePropertiesSerializer());
++      kryo.register( Arrays.asList( "" ).getClass(), new ArraysAsListSerializer() );
+       kryo.setInstantiatorStrategy(new StdInstantiatorStrategy());
++      removeField(kryo, Operator.class, "colExprMap");
++      kryo.register(MapWork.class);
++      kryo.register(ReduceWork.class);
++      kryo.register(TableDesc.class);
++      kryo.register(TableScanOperator.class);
++      kryo.register(UnionOperator.class);
++      kryo.register(FileSinkOperator.class);
++      kryo.register(HiveIgnoreKeyTextOutputFormat.class);
++      kryo.register(StandardConstantListObjectInspector.class);
++      kryo.register(StandardConstantMapObjectInspector.class);
++      kryo.register(StandardConstantStructObjectInspector.class);
++      kryo.register(SequenceFileInputFormat.class);
++      kryo.register(HiveSequenceFileOutputFormat.class);
+       return kryo;
+     };
+   };
+diff --git a/ql/src/test/queries/clientpositive/kryo_arrays_as_list.q b/ql/src/test/queries/clientpositive/kryo_arrays_as_list.q
+new file mode 100644
+index 0000000..34d80fc
+--- /dev/null
++++ b/ql/src/test/queries/clientpositive/kryo_arrays_as_list.q
+@@ -0,0 +1,29 @@
++set hive.vectorized.execution.enabled=true;
++
++create table if not exists alltypes (
++ bo boolean,
++ ti tinyint,
++ si smallint,
++ i int,
++ bi bigint,
++ f float,
++ d double,
++ de decimal(10,3),
++ ts timestamp,
++ da date,
++ s string,
++ c char(5),
++ vc varchar(5),
++ m map<string, string>,
++ l array<int>,
++ st struct<c1:int, c2:string>
++) row format delimited fields terminated by '|'
++collection items terminated by ','
++map keys terminated by ':' stored as textfile;
++
++create table alltypes_orc like alltypes;
++alter table alltypes_orc set fileformat orc;
++
++load data local inpath '../../data/files/alltypes2.txt' overwrite into table alltypes;
++
++select count(*) from alltypes_orc where ts between '1969-12-31' and '1970-12-31';
+diff --git a/ql/src/test/results/clientpositive/kryo_arrays_as_list.q.out b/ql/src/test/results/clientpositive/kryo_arrays_as_list.q.out
+new file mode 100644
+index 0000000..0af87e5
+--- /dev/null
++++ b/ql/src/test/results/clientpositive/kryo_arrays_as_list.q.out
+@@ -0,0 +1,79 @@
++PREHOOK: query: create table if not exists alltypes (
++ bo boolean,
++ ti tinyint,
++ si smallint,
++ i int,
++ bi bigint,
++ f float,
++ d double,
++ de decimal(10,3),
++ ts timestamp,
++ da date,
++ s string,
++ c char(5),
++ vc varchar(5),
++ m map<string, string>,
++ l array<int>,
++ st struct<c1:int, c2:string>
++) row format delimited fields terminated by '|'
++collection items terminated by ','
++map keys terminated by ':' stored as textfile
++PREHOOK: type: CREATETABLE
++PREHOOK: Output: database:default
++PREHOOK: Output: default@alltypes
++POSTHOOK: query: create table if not exists alltypes (
++ bo boolean,
++ ti tinyint,
++ si smallint,
++ i int,
++ bi bigint,
++ f float,
++ d double,
++ de decimal(10,3),
++ ts timestamp,
++ da date,
++ s string,
++ c char(5),
++ vc varchar(5),
++ m map<string, string>,
++ l array<int>,
++ st struct<c1:int, c2:string>
++) row format delimited fields terminated by '|'
++collection items terminated by ','
++map keys terminated by ':' stored as textfile
++POSTHOOK: type: CREATETABLE
++POSTHOOK: Output: database:default
++POSTHOOK: Output: default@alltypes
++PREHOOK: query: create table alltypes_orc like alltypes
++PREHOOK: type: CREATETABLE
++PREHOOK: Output: database:default
++PREHOOK: Output: default@alltypes_orc
++POSTHOOK: query: create table alltypes_orc like alltypes
++POSTHOOK: type: CREATETABLE
++POSTHOOK: Output: database:default
++POSTHOOK: Output: default@alltypes_orc
++PREHOOK: query: alter table alltypes_orc set fileformat orc
++PREHOOK: type: ALTERTABLE_FILEFORMAT
++PREHOOK: Input: default@alltypes_orc
++PREHOOK: Output: default@alltypes_orc
++POSTHOOK: query: alter table alltypes_orc set fileformat orc
++POSTHOOK: type: ALTERTABLE_FILEFORMAT
++POSTHOOK: Input: default@alltypes_orc
++POSTHOOK: Output: default@alltypes_orc
++PREHOOK: query: load data local inpath '../../data/files/alltypes2.txt' overwrite into table alltypes
++PREHOOK: type: LOAD
++#### A masked pattern was here ####
++PREHOOK: Output: default@alltypes
++POSTHOOK: query: load data local inpath '../../data/files/alltypes2.txt' overwrite into table alltypes
++POSTHOOK: type: LOAD
++#### A masked pattern was here ####
++POSTHOOK: Output: default@alltypes
++PREHOOK: query: select count(*) from alltypes_orc where ts between '1969-12-31' and '1970-12-31'
++PREHOOK: type: QUERY
++PREHOOK: Input: default@alltypes_orc
++#### A masked pattern was here ####
++POSTHOOK: query: select count(*) from alltypes_orc where ts between '1969-12-31' and '1970-12-31'
++POSTHOOK: type: QUERY
++POSTHOOK: Input: default@alltypes_orc
++#### A masked pattern was here ####
++0
+-- 
+1.7.9.5
+

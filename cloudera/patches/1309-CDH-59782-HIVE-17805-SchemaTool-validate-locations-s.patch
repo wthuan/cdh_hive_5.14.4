@@ -1,0 +1,36 @@
+From f2010d2ecbb5e44417a93cca7490f076cf0559fa Mon Sep 17 00:00:00 2001
+From: Vihang Karajgaonkar <vihang@cloudera.com>
+Date: Fri, 13 Oct 2017 15:22:43 -0700
+Subject: [PATCH 1309/1363] CDH-59782 : HIVE-17805 : SchemaTool validate
+ locations should not return exit 1 (Vihang
+ Karajgaonkar)
+
+Change-Id: I583f43e1b5c845f6e328d9bbe4f759918f74b302
+---
+ .../org/apache/hive/beeline/HiveSchemaTool.java    |    6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/beeline/src/java/org/apache/hive/beeline/HiveSchemaTool.java b/beeline/src/java/org/apache/hive/beeline/HiveSchemaTool.java
+index 85c78d1..d4520cc 100644
+--- a/beeline/src/java/org/apache/hive/beeline/HiveSchemaTool.java
++++ b/beeline/src/java/org/apache/hive/beeline/HiveSchemaTool.java
+@@ -597,14 +597,12 @@ public void doValidate() throws HiveMetaException {
+       if (validateLocations(conn, this.validationServers)) {
+         System.out.println("[SUCCESS]\n");
+       } else {
+-        success = false;
+-        System.out.println("[FAIL]\n");
++        System.out.println("[WARN]\n");
+       }
+       if (validateColumnNullValues(conn)) {
+         System.out.println("[SUCCESS]\n");
+       } else {
+-        success = false;
+-        System.out.println("[FAIL]\n");
++        System.out.println("[WARN]\n");
+       }
+     } finally {
+       if (conn != null) {
+-- 
+1.7.9.5
+

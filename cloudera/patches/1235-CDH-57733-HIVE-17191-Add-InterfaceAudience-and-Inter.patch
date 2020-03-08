@@ -1,0 +1,114 @@
+From 924d374ee9730e938c6b82c70133517524947bf7 Mon Sep 17 00:00:00 2001
+From: Sahil Takiar <takiar.sahil@gmail.com>
+Date: Tue, 8 Aug 2017 14:56:54 -0700
+Subject: [PATCH 1235/1363] CDH-57733: HIVE-17191: Add InterfaceAudience and
+ InterfaceStability annotations for StorageHandler
+ APIs (Sahil Takiar, reviewd by Aihua Xu)
+
+(cherry picked from commit 16bfb9c9405b68a24c7e6c1b13bec00e38bbe213)
+
+Change-Id: I66360548c85a8f6d117e8a0a0f9f6662b71cb6b4
+---
+ .../apache/hadoop/hive/metastore/HiveMetaHook.java |    4 ++++
+ .../hive/ql/metadata/HiveStorageHandler.java       |    4 ++++
+ .../ql/metadata/HiveStoragePredicateHandler.java   |    6 ++++++
+ .../hadoop/hive/ql/metadata/InputEstimator.java    |    4 ++++
+ 4 files changed, 18 insertions(+)
+
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaHook.java b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaHook.java
+index 570b358..3317bc5 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaHook.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaHook.java
+@@ -18,6 +18,8 @@
+ 
+ package org.apache.hadoop.hive.metastore;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.api.MetaException;
+ import org.apache.hadoop.hive.metastore.api.Partition;
+ import org.apache.hadoop.hive.metastore.api.Table;
+@@ -32,6 +34,8 @@
+  * Implementations can use {@link MetaStoreUtils#isExternalTable} to
+  * distinguish external tables from managed tables.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface HiveMetaHook {
+   /**
+    * Called before a new table definition is added to the metastore
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/metadata/HiveStorageHandler.java b/ql/src/java/org/apache/hadoop/hive/ql/metadata/HiveStorageHandler.java
+index 1eec32c..9326800 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/metadata/HiveStorageHandler.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/metadata/HiveStorageHandler.java
+@@ -21,6 +21,8 @@
+ import java.util.Map;
+ 
+ import org.apache.hadoop.conf.Configurable;
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaHook;
+ import org.apache.hadoop.hive.ql.plan.TableDesc;
+ import org.apache.hadoop.hive.serde2.SerDe;
+@@ -47,6 +49,8 @@
+  * Storage handler classes are plugged in using the STORED BY 'classname'
+  * clause in CREATE TABLE.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface HiveStorageHandler extends Configurable {
+   /**
+    * @return Class providing an implementation of {@link InputFormat}
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/metadata/HiveStoragePredicateHandler.java b/ql/src/java/org/apache/hadoop/hive/ql/metadata/HiveStoragePredicateHandler.java
+index 7d7c764..42ffa64 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/metadata/HiveStoragePredicateHandler.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/metadata/HiveStoragePredicateHandler.java
+@@ -18,6 +18,8 @@
+ 
+ package org.apache.hadoop.hive.ql.metadata;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
+ import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
+ import org.apache.hadoop.hive.serde2.Deserializer;
+@@ -30,6 +32,8 @@
+  * HiveStorageHandler}; it should only be implemented by handlers which
+  * support decomposition of predicates being pushed down into table scans.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface HiveStoragePredicateHandler {
+ 
+   /**
+@@ -63,6 +67,8 @@ public DecomposedPredicate decomposePredicate(
+   /**
+    * Struct class for returning multiple values from decomposePredicate.
+    */
++  @InterfaceAudience.Public
++  @InterfaceStability.Stable
+   public static class DecomposedPredicate {
+     /**
+      * Portion of predicate to be evaluated by storage handler.  Hive
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/metadata/InputEstimator.java b/ql/src/java/org/apache/hadoop/hive/ql/metadata/InputEstimator.java
+index 5826869..874cb8d 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/metadata/InputEstimator.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/metadata/InputEstimator.java
+@@ -18,10 +18,14 @@
+ 
+ package org.apache.hadoop.hive.ql.metadata;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.ql.exec.TableScanOperator;
+ import org.apache.hadoop.mapred.JobConf;
+ 
+ // Plugin interface for storage handler which supports input estimation
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface InputEstimator {
+ 
+   /**
+-- 
+1.7.9.5
+

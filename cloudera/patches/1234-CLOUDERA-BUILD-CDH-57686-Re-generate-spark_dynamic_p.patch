@@ -1,0 +1,54 @@
+From fd3c17f82d13ef57cf187137a85b9aaf3eea6c12 Mon Sep 17 00:00:00 2001
+From: stakiar <stakiar@cloudera.com>
+Date: Tue, 8 Aug 2017 10:59:33 -0700
+Subject: [PATCH 1234/1363] CLOUDERA-BUILD: CDH-57686: Re-generate
+ spark_dynamic_partition_pruning_mapjoin_only.q.out
+
+Change-Id: I154cb6db800dc585b2143d66c6bc6619f11c5d2d
+---
+ ...rk_dynamic_partition_pruning_mapjoin_only.q.out |    6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning_mapjoin_only.q.out b/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning_mapjoin_only.q.out
+index 2a1f899..955789a 100644
+--- a/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning_mapjoin_only.q.out
++++ b/ql/src/test/results/clientpositive/spark/spark_dynamic_partition_pruning_mapjoin_only.q.out
+@@ -191,10 +191,10 @@ STAGE PLANS:
+                         outputColumnNames: _col0
+                         Statistics: Num rows: 1000 Data size: 24624 Basic stats: COMPLETE Column stats: NONE
+                         Spark Partition Pruning Sink Operator
++                          Target column: hr (string)
+                           partition key expr: hr
+ #### A masked pattern was here ####
+                           Statistics: Num rows: 1000 Data size: 24624 Basic stats: COMPLETE Column stats: NONE
+-                          target column name: hr
+                           target work: Map 1
+ 
+   Stage: Stage-3
+@@ -224,10 +224,10 @@ STAGE PLANS:
+                         outputColumnNames: _col0
+                         Statistics: Num rows: 1 Data size: 21 Basic stats: COMPLETE Column stats: NONE
+                         Spark Partition Pruning Sink Operator
++                          Target column: ds (string)
+                           partition key expr: ds
+ #### A masked pattern was here ####
+                           Statistics: Num rows: 1 Data size: 21 Basic stats: COMPLETE Column stats: NONE
+-                          target column name: ds
+                           target work: Map 1
+             Local Work:
+               Map Reduce Local Work
+@@ -352,10 +352,10 @@ STAGE PLANS:
+                         outputColumnNames: _col0
+                         Statistics: Num rows: 1 Data size: 21 Basic stats: COMPLETE Column stats: NONE
+                         Spark Partition Pruning Sink Operator
++                          Target column: ds (string)
+                           partition key expr: ds
+ #### A masked pattern was here ####
+                           Statistics: Num rows: 1 Data size: 21 Basic stats: COMPLETE Column stats: NONE
+-                          target column name: ds
+                           target work: Map 1
+             Local Work:
+               Map Reduce Local Work
+-- 
+1.7.9.5
+

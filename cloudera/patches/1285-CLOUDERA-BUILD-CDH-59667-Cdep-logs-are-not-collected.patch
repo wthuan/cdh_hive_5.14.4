@@ -1,0 +1,34 @@
+From 5221ba0d6fc3f6a5dddcf58398027cbd0dcc0728 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Tue, 26 Sep 2017 16:47:09 +0200
+Subject: [PATCH 1285/1363] CLOUDERA-BUILD CDH-59667 Cdep logs are not
+ collected for beeline tests
+
+Change-Id: I297e52fdf33a628fbd89c8a1e74773a01397e5ca
+---
+ cloudera/beeline/jenkins_beehive.sh |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/cloudera/beeline/jenkins_beehive.sh b/cloudera/beeline/jenkins_beehive.sh
+index ae247ba..6038c5f 100644
+--- a/cloudera/beeline/jenkins_beehive.sh
++++ b/cloudera/beeline/jenkins_beehive.sh
+@@ -34,6 +34,7 @@ HOSTS_LIST=($(eval echo ${CLUSTER_SHORTNAME}))
+ HIVESERVER2_NODE="${HOSTS_LIST[0]}.${DOMAIN}"
+ SSH_USER=jenkins
+ 
++cd $WORKSPACE
+ # make the build tools available
+ . /opt/toolchain/toolchain.sh
+ echo "Note: utils.sh pulled from master branch"
+@@ -76,7 +77,6 @@ DATA_DIR=/run/cloudera-scm-agent
+ AUX_DIR=/tmp/aux
+ 
+ # Apply patch
+-cd $WORKSPACE
+ if [[ -s patch.file ]]
+ then
+   git apply -3 -p0 patch.file
+-- 
+1.7.9.5
+

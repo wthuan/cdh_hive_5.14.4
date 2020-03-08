@@ -1,0 +1,23 @@
+From 484d4c9b0210e08e2750668fc123357d6b76caf8 Mon Sep 17 00:00:00 2001
+From: Bruno Pusztahazi <bpusztahazi@cloudera.com>
+Date: Thu, 3 Oct 2019 17:52:28 +0200
+Subject: [PATCH 1363/1363] PATCH-3578 Adding PATCH.txt
+
+Change-Id: I51e1a101099c5c4e5790824dc9aedba8d7652513
+---
+ PATCH.txt |    2 ++
+ 1 file changed, 2 insertions(+)
+ create mode 100644 PATCH.txt
+
+diff --git a/PATCH.txt b/PATCH.txt
+new file mode 100644
+index 0000000..1a50f03
+--- /dev/null
++++ b/PATCH.txt
+@@ -0,0 +1,2 @@
++PATCH-3578
++    HIVE-6384: Implement all Hive data types in Parquet
+\ No newline at end of file
+-- 
+1.7.9.5
+

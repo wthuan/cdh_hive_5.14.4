@@ -1,0 +1,71 @@
+From 5678c4a6f6ed91ee27e610bde1a41c1dc15a991e Mon Sep 17 00:00:00 2001
+From: Marta Kuczora <kuczoram@cloudera.com>
+Date: Sun, 10 Sep 2017 17:44:20 +0200
+Subject: [PATCH 1280/1363] CLOUDERA-BUILD: CDH-53833: Exclude some q tests
+ which are failing on S3 with the optimization on
+
+Change-Id: I885ec12fe2972639aa90f77c702b129c67c6cb66
+---
+ .../test/resources/testconfiguration.properties    |   10 ++--------
+ 1 file changed, 2 insertions(+), 8 deletions(-)
+
+diff --git a/itests/src/test/resources/testconfiguration.properties b/itests/src/test/resources/testconfiguration.properties
+index bf48021..e819b8b 100644
+--- a/itests/src/test/resources/testconfiguration.properties
++++ b/itests/src/test/resources/testconfiguration.properties
+@@ -1221,7 +1221,6 @@ hdfs.blobstore.query.files=add_part_exist.q,\
+   input18.q,\
+   input1_limit.q,\
+   input2.q,\
+-  input20.q,\
+   input21.q,\
+   input22.q,\
+   input23.q,\
+@@ -1230,9 +1229,6 @@ hdfs.blobstore.query.files=add_part_exist.q,\
+   input26.q,\
+   input28.q,\
+   input3.q,\
+-  input33.q,\
+-  input34.q,\
+-  input38.q,\
+   input39.q,\
+   input3_limit.q,\
+   input4.q,\
+@@ -1262,6 +1258,8 @@ hdfs.blobstore.query.files=add_part_exist.q,\
+   join3.q,\
+   join31.q,\
+   join32.q,\
++  join34.q,\
++  join38.q,\
+   join4.q,\
+   join40.q,\
+   join41.q,\
+@@ -1387,9 +1385,7 @@ hdfs.blobstore.query.files=add_part_exist.q,\
+   partitions_json.q,\
+   protectmode.q,\
+   protectmode2.q,\
+-  rcfile_bigdata.q,\
+   rcfile_columnar.q,\
+-  rcfile_createas1.q,\
+   rcfile_default_format.q,\
+   rcfile_lazydecompress.q,\
+   rcfile_merge1.q,\
+@@ -1429,7 +1425,6 @@ hdfs.blobstore.query.files=add_part_exist.q,\
+   skewjoin_noskew.q,\
+   skewjoin_union_remove_1.q,\
+   skewjoin_union_remove_2.q,\
+-  smb_join_partition_key.q,\
+   smb_mapjoin_1.q,\
+   smb_mapjoin_10.q,\
+   smb_mapjoin_11.q,\
+@@ -1455,7 +1450,6 @@ hdfs.blobstore.query.files=add_part_exist.q,\
+   stats15.q,\
+   stats16.q,\
+   stats18.q,\
+-  stats19.q,\
+   stats20.q,\
+   stats3.q,\
+   stats8.q,\
+-- 
+1.7.9.5
+

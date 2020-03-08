@@ -1,0 +1,87 @@
+From 75757ff7488097f970f63ba941306c28b0317ad0 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Tue, 10 Oct 2017 13:24:10 +0200
+Subject: [PATCH 1299/1363] CLOUDERA-BUILD: CDH-60053: Hive pre-commit
+ qtest-driver-info.py is broken
+
+Change-Id: Iae2f085145356c9f3c39db61907bad18892b7b63
+---
+ cloudera/qtest-driver-info.py      |    2 +-
+ cloudera/test_qtest_driver_info.py |   23 +++++++++--------------
+ 2 files changed, 10 insertions(+), 15 deletions(-)
+
+diff --git a/cloudera/qtest-driver-info.py b/cloudera/qtest-driver-info.py
+index f925eca..46ff1b2 100644
+--- a/cloudera/qtest-driver-info.py
++++ b/cloudera/qtest-driver-info.py
+@@ -156,7 +156,7 @@ def get_drivers_for_qresults(config_classes, testproperties, qresults, qfile):
+ # Get the name of the driver class
+ def get_driver_from_config_class(config_class, testproperties, qfile, qfile_dir, class_dir):
+     driver_name = ""
+-    if config_class.classname not in CLASS_NAMES_TO_IGNORE and config_class.classname in DRIVER_FOR_CONFIG_CLASS and re.compile(qfile_dir).search(class_dir) is not None:
++    if config_class.classname not in CLASS_NAMES_TO_IGNORE and config_class.classname in DRIVER_FOR_CONFIG_CLASS and class_dir==qfile_dir:
+         if is_qfile_include(config_class.excludes, config_class.includes, qfile, testproperties, config_class.override_query_file):
+             driver_name = DRIVER_FOR_CONFIG_CLASS[config_class.classname]
+ 
+diff --git a/cloudera/test_qtest_driver_info.py b/cloudera/test_qtest_driver_info.py
+index fd61d49..a678f2f 100755
+--- a/cloudera/test_qtest_driver_info.py
++++ b/cloudera/test_qtest_driver_info.py
+@@ -18,12 +18,11 @@
+     "../itests/qtest/src/test/java/org/apache/hadoop/hive/cli/TestMiniTezCliDriver.java",
+     "../itests/qtest/src/test/java/org/apache/hadoop/hive/cli/TestNegativeCliDriver.java",
+     "../itests/qtest/src/test/java/org/apache/hadoop/hive/cli/TestNegativeMinimrCliDriver.java",
+-    "../itests/qtest/src/test/java/org/apache/hadoop/hive/cli/TestPerfCliDriver.java",
+     "../itests/qtest/src/test/java/org/apache/hadoop/hive/ql/parse/TestParseNegativeDriver.java",
+     "../itests/qtest-spark/src/test/java/org/apache/hadoop/hive/cli/TestMiniSparkOnYarnCliDriver.java",
+     "../itests/qtest-spark/src/test/java/org/apache/hadoop/hive/cli/TestSparkCliDriver.java",
+     "../itests/qtest-spark/src/test/java/org/apache/hadoop/hive/cli/TestSparkNegativeCliDriver.java",
+-    "../ql/src/test/org/apache/hadoop/hive/ql/exec/TestExecDriver.java"
++    "../ql/src/test/org/apache/hadoop/hive/ql/exec/TestExecDriver.java",
+ )
+ 
+ DRIVER_TEST_ARGS = (
+@@ -170,20 +169,18 @@
+             "TestMinimrCliDriver:groupby2.q"
+         ),
+     "ql/src/test/results/clientpositive/join1.q.out":
+-        (
+-            "TestSparkCliDriver:join1.q",
++        [
+             "TestMinimrCliDriver:join1.q"
+-        ),
++        ],
+     "ql/src/test/queries/clientpositive/union_remove_8.q":
+         (
+             "TestCliDriver:union_remove_8.q",
+             "TestSparkCliDriver:union_remove_8.q"
+         ),
+     "ql/src/test/results/clientpositive/limit_partition_metadataonly.q.out":
+-        (
+-            "TestCliDriver:limit_partition_metadataonly.q",
+-            "TestSparkCliDriver:limit_partition_metadataonly.q"
+-        ),
++        [
++            "TestCliDriver:limit_partition_metadataonly.q"
++        ],
+     "ql/src/test/queries/clientpositive/bucketmapjoin7.q":
+         (
+             "TestMinimrCliDriver:bucketmapjoin7.q",
+@@ -191,11 +188,9 @@
+             "TestMiniSparkOnYarnCliDriver:bucketmapjoin7.q"
+         ),
+     "ql/src/test/results/clientpositive/stats_counter.q.out":
+-        (
+-            "TestMinimrCliDriver:stats_counter.q",
+-            "TestSparkCliDriver:stats_counter.q",
+-            "TestMiniSparkOnYarnCliDriver:stats_counter.q"
+-        ),
++        [
++            "TestMinimrCliDriver:stats_counter.q"
++        ],
+     "ql/src/test/queries/clientpositive/char_join1.q":
+         [
+             "TestCliDriver:char_join1.q"
+-- 
+1.7.9.5
+

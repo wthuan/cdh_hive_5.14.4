@@ -1,0 +1,126 @@
+From e6ba214ee7e103957a8f3b88a4379847a5595418 Mon Sep 17 00:00:00 2001
+From: Barna Zsombor Klara <zsombor.klara@cloudera.com>
+Date: Tue, 8 Aug 2017 08:01:25 -0700
+Subject: [PATCH 1261/1363] CDH-53834: HIVE-16784: Missing lineage information
+ when hive.blobstore.optimizations.enabled is true
+ (Barna Zsombor Klara, reviewed by Peter Vary,
+ Sahil Takiar)
+
+Change-Id: Ie77a026f1ea5b9242228afc654329381b100c031
+---
+ .../results/clientpositive/insert_into_table.q.out |    2 ++
+ .../clientpositive/insert_overwrite_table.q.out    |    2 ++
+ .../hadoop/hive/ql/optimizer/GenMapRedUtils.java   |    5 +++++
+ .../hadoop/hive/ql/session/LineageState.java       |    7 +++++++
+ .../TestGenMapRedUtilsCreateConditionalTask.java   |    2 ++
+ 5 files changed, 18 insertions(+)
+
+diff --git a/itests/hive-blobstore/src/test/results/clientpositive/insert_into_table.q.out b/itests/hive-blobstore/src/test/results/clientpositive/insert_into_table.q.out
+index acbdb47..be712b5 100644
+--- a/itests/hive-blobstore/src/test/results/clientpositive/insert_into_table.q.out
++++ b/itests/hive-blobstore/src/test/results/clientpositive/insert_into_table.q.out
+@@ -18,12 +18,14 @@ PREHOOK: Output: default@table1
+ POSTHOOK: query: INSERT INTO TABLE table1 VALUES (1)
+ POSTHOOK: type: QUERY
+ POSTHOOK: Output: default@table1
++POSTHOOK: Lineage: table1.id EXPRESSION [(values__tmp__table__1)values__tmp__table__1.FieldSchema(name:tmp_values_col1, type:string, comment:), ]
+ PREHOOK: query: INSERT INTO TABLE table1 VALUES (2)
+ PREHOOK: type: QUERY
+ PREHOOK: Output: default@table1
+ POSTHOOK: query: INSERT INTO TABLE table1 VALUES (2)
+ POSTHOOK: type: QUERY
+ POSTHOOK: Output: default@table1
++POSTHOOK: Lineage: table1.id EXPRESSION [(values__tmp__table__2)values__tmp__table__2.FieldSchema(name:tmp_values_col1, type:string, comment:), ]
+ PREHOOK: query: SELECT * FROM table1
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@table1
+diff --git a/itests/hive-blobstore/src/test/results/clientpositive/insert_overwrite_table.q.out b/itests/hive-blobstore/src/test/results/clientpositive/insert_overwrite_table.q.out
+index cb333e4..860d55d 100644
+--- a/itests/hive-blobstore/src/test/results/clientpositive/insert_overwrite_table.q.out
++++ b/itests/hive-blobstore/src/test/results/clientpositive/insert_overwrite_table.q.out
+@@ -18,6 +18,7 @@ PREHOOK: Output: default@table1
+ POSTHOOK: query: INSERT OVERWRITE TABLE table1 VALUES (1)
+ POSTHOOK: type: QUERY
+ POSTHOOK: Output: default@table1
++POSTHOOK: Lineage: table1.id EXPRESSION [(values__tmp__table__1)values__tmp__table__1.FieldSchema(name:tmp_values_col1, type:string, comment:), ]
+ PREHOOK: query: SELECT * FROM table1
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@table1
+@@ -33,6 +34,7 @@ PREHOOK: Output: default@table1
+ POSTHOOK: query: INSERT OVERWRITE TABLE table1 VALUES (2)
+ POSTHOOK: type: QUERY
+ POSTHOOK: Output: default@table1
++POSTHOOK: Lineage: table1.id EXPRESSION [(values__tmp__table__2)values__tmp__table__2.FieldSchema(name:tmp_values_col1, type:string, comment:), ]
+ PREHOOK: query: SELECT * FROM table1
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@table1
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/GenMapRedUtils.java b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/GenMapRedUtils.java
+index f0ffedf..aa38a6e 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/GenMapRedUtils.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/GenMapRedUtils.java
+@@ -115,6 +115,8 @@
+ import org.apache.hadoop.hive.ql.plan.TableScanDesc;
+ import org.apache.hadoop.hive.ql.plan.TezWork;
+ import org.apache.hadoop.hive.ql.stats.StatsFactory;
++import org.apache.hadoop.hive.ql.session.LineageState;
++import org.apache.hadoop.hive.ql.session.SessionState;
+ import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
+ import org.apache.hadoop.mapred.InputFormat;
+ 
+@@ -1638,12 +1640,15 @@ protected static MoveWork mergeMovePaths(Path condInputPath, MoveWork linkedMove
+     LoadFileDesc fileDesc = null;
+     LoadTableDesc tableDesc = null;
+ 
++    LineageState lineageState = SessionState.get().getLineageState();
+     if (linkedMoveWork.getLoadFileWork() != null) {
+       fileDesc = new LoadFileDesc(linkedMoveWork.getLoadFileWork());
+       fileDesc.setSourcePath(condInputPath);
++      lineageState.updateDirToOpMap(condInputPath, linkedMoveWork.getLoadFileWork().getSourcePath());
+     } else if (linkedMoveWork.getLoadTableWork() != null) {
+       tableDesc = new LoadTableDesc(linkedMoveWork.getLoadTableWork());
+       tableDesc.setSourcePath(condInputPath);
++      lineageState.updateDirToOpMap(condInputPath, linkedMoveWork.getLoadTableWork().getSourcePath());
+     } else {
+       throw new IllegalArgumentException("Merging a path with a MoveWork with multi-files work is not allowed.");
+     }
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/session/LineageState.java b/ql/src/java/org/apache/hadoop/hive/ql/session/LineageState.java
+index 223f0ea..3030a4e 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/session/LineageState.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/session/LineageState.java
+@@ -75,6 +75,13 @@ public void mapDirToFop(Path dir, FileSinkOperator fop) {
+     dirToFop.put(dir, fop);
+   }
+ 
++  public void updateDirToOpMap(Path newPath, Path oldPath) {
++    FileSinkOperator op = dirToFop.remove(oldPath);
++    if (op != null) {
++      dirToFop.put(newPath, op);
++    }
++  }
++
+   /**
+    * Set the lineage information for the associated directory.
+    *
+diff --git a/ql/src/test/org/apache/hadoop/hive/ql/optimizer/TestGenMapRedUtilsCreateConditionalTask.java b/ql/src/test/org/apache/hadoop/hive/ql/optimizer/TestGenMapRedUtilsCreateConditionalTask.java
+index 7c74ba6..179b48f 100644
+--- a/ql/src/test/org/apache/hadoop/hive/ql/optimizer/TestGenMapRedUtilsCreateConditionalTask.java
++++ b/ql/src/test/org/apache/hadoop/hive/ql/optimizer/TestGenMapRedUtilsCreateConditionalTask.java
+@@ -25,6 +25,7 @@
+ import org.apache.hadoop.hive.ql.io.HiveOutputFormat;
+ import org.apache.hadoop.hive.ql.parse.SemanticException;
+ import org.apache.hadoop.hive.ql.plan.*;
++import org.apache.hadoop.hive.ql.session.SessionState;
+ import org.junit.Before;
+ import org.junit.BeforeClass;
+ import org.junit.Test;
+@@ -52,6 +53,7 @@ public static void initializeSessionState() {
+   @Before
+   public void setUp() {
+     dummyMRTask = new MapRedTask();
++    SessionState.start(hiveConf);
+   }
+ 
+   @Test
+-- 
+1.7.9.5
+

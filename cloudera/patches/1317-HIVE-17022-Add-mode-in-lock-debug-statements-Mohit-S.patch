@@ -1,0 +1,103 @@
+From 9848cb3f571b46e4bd10078874f0ac97db3a6414 Mon Sep 17 00:00:00 2001
+From: Mohit Sabharwal <mohit@cloudera.com>
+Date: Thu, 6 Jul 2017 17:09:45 -0400
+Subject: [PATCH 1317/1363] HIVE-17022: Add mode in lock debug statements
+ (Mohit Sabharwal, reviewed by Naveen Gangam)
+
+(cherry picked from commit 4536fb74c0c2aecfaad1a3b17d2e016a438a8bd2)
+
+Conflicts:
+	ql/src/java/org/apache/hadoop/hive/ql/lockmgr/EmbeddedLockManager.java
+	ql/src/java/org/apache/hadoop/hive/ql/lockmgr/zookeeper/ZooKeeperHiveLockManager.java
+The format of the log messages were different upstream and in CDH.
+
+Change-Id: I49e35af551ecedab28723020b72cc5b0ad4778c2
+---
+ .../hive/ql/lockmgr/EmbeddedLockManager.java       |   20 +++++++++++++++++---
+ .../zookeeper/ZooKeeperHiveLockManager.java        |   13 +++++++++++--
+ 2 files changed, 28 insertions(+), 5 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/lockmgr/EmbeddedLockManager.java b/ql/src/java/org/apache/hadoop/hive/ql/lockmgr/EmbeddedLockManager.java
+index 7bd3df6..5702f3f 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/lockmgr/EmbeddedLockManager.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/lockmgr/EmbeddedLockManager.java
+@@ -25,7 +25,13 @@
+ import org.apache.hadoop.hive.ql.lockmgr.HiveLockObject.HiveLockObjectData;
+ import org.apache.hadoop.hive.ql.metadata.*;
+ 
+-import java.util.*;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.Comparator;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Stack;
+ import java.util.concurrent.TimeUnit;
+ import java.util.concurrent.locks.ReentrantLock;
+ 
+@@ -54,10 +60,12 @@ public void setContext(HiveLockManagerCtx ctx) throws LockException {
+ 
+   public HiveLock lock(HiveLockObject key, HiveLockMode mode, boolean keepAlive)
+       throws LockException {
++    LOG.debug("Acquiring lock for " + key.getName() + " with mode " + mode + " " + key.getData().getLockMode());
+     return lock(key, mode, numRetriesForLock, sleepTime);
+   }
+ 
+-  public List<HiveLock> lock(List<HiveLockObj> objs, boolean keepAlive, LockedDriverState lDrvState) throws LockException {
++  public List<HiveLock> lock(List<HiveLockObj> objs, boolean keepAlive, LockedDriverState lDrvState)
++      throws LockException {
+     return lock(objs, numRetriesForLock, sleepTime);
+   }
+ 
+@@ -112,9 +120,15 @@ private void sleep(long sleepTime) {
+     }
+   }
+ 
+-  public List<HiveLock> lock(List<HiveLockObj> objs, int numRetriesForLock, long sleepTime)
++  private List<HiveLock> lock(List<HiveLockObj> objs, int numRetriesForLock, long sleepTime)
+       throws LockException {
+     sortLocks(objs);
++    if (LOG.isDebugEnabled()) {
++      for (HiveLockObj obj : objs) {
++        LOG.debug("Acquiring lock for " + obj.getObj().getName() + " with mode " + obj.getMode());
++      }
++    }
++
+     for (int i = 0; i <= numRetriesForLock; i++) {
+       if (i > 0) {
+         sleep(sleepTime);
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/lockmgr/zookeeper/ZooKeeperHiveLockManager.java b/ql/src/java/org/apache/hadoop/hive/ql/lockmgr/zookeeper/ZooKeeperHiveLockManager.java
+index e5df066..8e377c0 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/lockmgr/zookeeper/ZooKeeperHiveLockManager.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/lockmgr/zookeeper/ZooKeeperHiveLockManager.java
+@@ -38,7 +38,16 @@
+ import org.apache.curator.framework.CuratorFramework;
+ 
+ import java.net.InetAddress;
+-import java.util.*;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.Comparator;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.LinkedList;
++import java.util.List;
++import java.util.Map;
++import java.util.Queue;
++import java.util.Set;
+ import java.util.concurrent.TimeUnit;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+@@ -279,7 +288,7 @@ private ZooKeeperHiveLock lock (HiveLockObject key, HiveLockMode mode,
+       boolean keepAlive, boolean parentCreated) throws LockException {
+     if (LOG.isDebugEnabled()) {
+       LOG.debug("Acquiring lock for " + key.getName() + " with mode " +
+-          key.getData().getLockMode());
++          mode + " " + key.getData().getLockMode());
+     }
+ 
+     int tryNum = 0;
+-- 
+1.7.9.5
+

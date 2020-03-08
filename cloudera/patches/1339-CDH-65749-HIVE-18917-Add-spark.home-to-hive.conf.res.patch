@@ -1,0 +1,37 @@
+From df461596ef94035d5be24889c8ce26fd94a4ea0e Mon Sep 17 00:00:00 2001
+From: Sahil Takiar <takiar.sahil@gmail.com>
+Date: Sat, 10 Mar 2018 17:55:08 -0800
+Subject: [PATCH 1339/1363] CDH-65749: HIVE-18917: Add spark.home to
+ hive.conf.restricted.list (Sahil Takiar, reviewed
+ by Aihua Xu)
+
+(cherry picked from commit cf12c131a14b52e8ebadefe9a43aef8c68940b8b)
+(cherry picked from commit da91df9db2ba6d8e529b4295f7a95eecbaeaac9f)
+(cherry picked from commit dd0bc33d125817e20bd4854172b3c8326c834ea0)
+
+Conflicts:
+	common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+	itests/hive-unit/src/test/java/org/apache/hive/jdbc/TestRestrictedList.java
+
+Change-Id: I5104d2a56a044ac192c40bb0be12452cd24aa0f5
+---
+ .../java/org/apache/hadoop/hive/conf/HiveConf.java |    3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java b/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+index 5ad7151..8783559 100644
+--- a/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
++++ b/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+@@ -1996,7 +1996,8 @@ public void setSparkConfigUpdated(boolean isSparkConfigUpdated) {
+     HIVE_CONF_RESTRICTED_LIST("hive.conf.restricted.list",
+         "hive.security.authenticator.manager,hive.security.authorization.manager,hive.users.in.admin.role,"+
+         "hadoop.bin.path,"+
+-        "yarn.bin.path",
++        "yarn.bin.path,"+
++        "spark.home",
+         "Comma separated list of configuration options which are immutable at runtime"),
+     HIVE_CONF_HIDDEN_LIST("hive.conf.hidden.list",
+         METASTOREPWD.varname + "," + HIVE_SERVER2_SSL_KEYSTORE_PASSWORD.varname
+-- 
+1.7.9.5
+

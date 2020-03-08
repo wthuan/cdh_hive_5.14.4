@@ -1,0 +1,65 @@
+From c5cdd0a66f0889a8ee108a87d17126455bd052a9 Mon Sep 17 00:00:00 2001
+From: Aihua Xu <aihuaxu@apache.org>
+Date: Fri, 7 Apr 2017 09:57:25 -0400
+Subject: [PATCH 1178/1363] CDH-52274: HIVE-16291: Hive fails when unions a
+ parquet table with itself (Yibing Shi, reviewed
+ by Ashutosh Chauhan & Aihua Xu)
+
+Change-Id: I26e3086157809d0a619a46c1b87de4cff93e2b04
+---
+ .../hadoop/hive/serde2/ColumnProjectionUtils.java  |    6 ++----
+ .../hive/serde2/TestColumnProjectionUtils.java     |   14 ++++++++++++++
+ 2 files changed, 16 insertions(+), 4 deletions(-)
+
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/ColumnProjectionUtils.java b/serde/src/java/org/apache/hadoop/hive/serde2/ColumnProjectionUtils.java
+index 6508d74..43c3c17 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/ColumnProjectionUtils.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/ColumnProjectionUtils.java
+@@ -23,6 +23,7 @@
+ 
+ import org.apache.hadoop.conf.Configuration;
+ import org.apache.hadoop.util.StringUtils;
++import org.apache.hive.common.util.HiveStringUtils;
+ 
+ /**
+  * ColumnProjectionUtils.
+@@ -95,10 +96,7 @@ public static void setReadColumns(Configuration conf, List<Integer> ids) {
+   public static void appendReadColumns(Configuration conf, List<Integer> ids) {
+     String id = toReadColumnIDString(ids);
+     String old = conf.get(READ_COLUMN_IDS_CONF_STR, null);
+-    String newConfStr = id;
+-    if (old != null && !old.isEmpty()) {
+-      newConfStr = newConfStr + StringUtils.COMMA_STR + old;
+-    }
++    String newConfStr = HiveStringUtils.joinIgnoringEmpty(new String[] {id, old}, StringUtils.COMMA);
+     setReadColumnIDConf(conf, newConfStr);
+     // Set READ_ALL_COLUMNS to false
+     conf.setBoolean(READ_ALL_COLUMNS, false);
+diff --git a/serde/src/test/org/apache/hadoop/hive/serde2/TestColumnProjectionUtils.java b/serde/src/test/org/apache/hadoop/hive/serde2/TestColumnProjectionUtils.java
+index 2b81b54..fbd9b07 100644
+--- a/serde/src/test/org/apache/hadoop/hive/serde2/TestColumnProjectionUtils.java
++++ b/serde/src/test/org/apache/hadoop/hive/serde2/TestColumnProjectionUtils.java
+@@ -85,6 +85,20 @@ public void testReadColumnIds() {
+   }
+ 
+   @Test
++  public void testMultipleIdsWithEmpty() {
++    List<Integer> ids1 = Arrays.asList(1, 2);
++    List<Integer> ids2 = new ArrayList<Integer>();
++    List<Integer> ids3 = Arrays.asList(2, 3);
++
++    ColumnProjectionUtils.appendReadColumns(conf, ids1);
++    ColumnProjectionUtils.appendReadColumns(conf, ids2);
++    ColumnProjectionUtils.appendReadColumns(conf, ids3);
++
++    List<Integer> actual = ColumnProjectionUtils.getReadColumnIDs(conf);
++    assertEquals(Arrays.asList(2, 3, 1), actual);
++  }
++
++  @Test
+   public void testDeprecatedMethods() {
+     List<Integer> columnIds = new ArrayList<Integer>();
+     List<Integer> actual;
+-- 
+1.7.9.5
+

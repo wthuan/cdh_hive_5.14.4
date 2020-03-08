@@ -1,0 +1,226 @@
+From 17aa62c1b81a0994e196b44abace591505a229b2 Mon Sep 17 00:00:00 2001
+From: Aihua Xu <aihuaxu@apache.org>
+Date: Fri, 14 Apr 2017 10:53:58 -0400
+Subject: [PATCH 1176/1363] HIVE-16450: Some metastore operations are not
+ retried even with desired underlining exceptions
+ (Aihua Xu, reviewed by Naveen Gangam & Peter
+ Vary)
+
+Change-Id: I6e5a0ab690064e1e25af942e09866300a339333b
+---
+ .../org/apache/hadoop/hive/metastore/Deadline.java |   29 ++++++--------------
+ .../hadoop/hive/metastore/MetaStoreUtils.java      |   23 ++++++++++++++++
+ .../apache/hadoop/hive/metastore/ObjectStore.java  |   28 +++++++------------
+ .../hadoop/hive/metastore/RetryingHMSHandler.java  |    2 --
+ 4 files changed, 42 insertions(+), 40 deletions(-)
+
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/Deadline.java b/metastore/src/java/org/apache/hadoop/hive/metastore/Deadline.java
+index ecff07d..3bb9447 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/Deadline.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/Deadline.java
+@@ -86,15 +86,15 @@ public static void registerIfNot(long timeout) {
+    */
+   public static void resetTimeout(long timeoutMs) throws MetaException {
+     if (timeoutMs <= 0) {
+-      throw newMetaException(new DeadlineException("The reset timeout value should be " +
++      throw MetaStoreUtils.newMetaException(new DeadlineException("The reset timeout value should be " +
+           "larger than 0: " + timeoutMs));
+     }
+     Deadline deadline = getCurrentDeadline();
+     if (deadline != null) {
+       deadline.timeoutNanos = timeoutMs * 1000000L;
+     } else {
+-      throw newMetaException(new DeadlineException("The threadlocal Deadline is null," +
+-          " please register it firstly."));
++      throw MetaStoreUtils.newMetaException(new DeadlineException("The threadlocal Deadline is null," +
++          " please register it first."));
+     }
+   }
+ 
+@@ -105,8 +105,8 @@ public static void resetTimeout(long timeoutMs) throws MetaException {
+   public static boolean startTimer(String method) throws MetaException {
+     Deadline deadline = getCurrentDeadline();
+     if (deadline == null) {
+-      throw newMetaException(new DeadlineException("The threadlocal Deadline is null," +
+-          " please register it firstly."));
++      throw MetaStoreUtils.newMetaException(new DeadlineException("The threadlocal Deadline is null," +
++          " please register it first."));
+     }
+     if (deadline.startTime != NO_DEADLINE) return false;
+     deadline.method = method;
+@@ -125,8 +125,8 @@ public static void stopTimer() throws MetaException {
+       deadline.startTime = NO_DEADLINE;
+       deadline.method = null;
+     } else {
+-      throw newMetaException(new DeadlineException("The threadlocal Deadline is null," +
+-          " please register it firstly."));
++      throw MetaStoreUtils.newMetaException(new DeadlineException("The threadlocal Deadline is null," +
++          " please register it first."));
+     }
+   }
+ 
+@@ -146,7 +146,7 @@ public static void checkTimeout() throws MetaException {
+     if (deadline != null) {
+       deadline.check();
+     } else {
+-      throw newMetaException(new DeadlineException("The threadlocal Deadline is null," +
++      throw MetaStoreUtils.newMetaException(new DeadlineException("The threadlocal Deadline is null," +
+           " please register it first."));
+     }
+   }
+@@ -165,18 +165,7 @@ private void check() throws MetaException{
+             + (elapsedTime / 1000000L) + "ms exceeds " + (timeoutNanos / 1000000L)  + "ms");
+       }
+     } catch (DeadlineException e) {
+-      throw newMetaException(e);
++      throw MetaStoreUtils.newMetaException(e);
+     }
+   }
+-
+-  /**
+-   * convert DeadlineException to MetaException
+-   * @param e
+-   * @return
+-   */
+-  private static MetaException newMetaException(DeadlineException e) {
+-    MetaException metaException = new MetaException(e.getMessage());
+-    metaException.initCause(e);
+-    return metaException;
+-  }
+ }
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreUtils.java b/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreUtils.java
+index eea597b..6fd244d 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreUtils.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreUtils.java
+@@ -1762,4 +1762,27 @@ public static ClassLoader addToClassPath(ClassLoader cloader, String[] newPaths)
+     return new URLClassLoader(curPath.toArray(new URL[0]), loader);
+   }
+ 
++  /**
++   * convert Exception to MetaException, which sets the cause to such exception
++   * @param e cause of the exception
++   * @return  the MetaException with the specified exception as the cause
++   */
++  public static MetaException newMetaException(Exception e) {
++    return newMetaException(e != null ? e.getMessage() : null, e);
++  }
++
++  /**
++   * convert Exception to MetaException, which sets the cause to such exception
++   * @param errorMessage  the error message for this MetaException
++   * @param e             cause of the exception
++   * @return  the MetaException with the specified exception as the cause
++   */
++  public static MetaException newMetaException(String errorMessage, Exception e) {
++    MetaException metaException = new MetaException(errorMessage);
++    if (e != null) {
++      metaException.initCause(e);
++    }
++    return metaException;
++  }
++
+ }
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/ObjectStore.java b/metastore/src/java/org/apache/hadoop/hive/metastore/ObjectStore.java
+index 689724a..3afcb6a 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/ObjectStore.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/ObjectStore.java
+@@ -2637,7 +2637,7 @@ public T run(boolean initTable) throws MetaException, NoSuchObjectException {
+         throw ex;
+       } catch (Exception ex) {
+         LOG.error("", ex);
+-        throw new MetaException(ex.getMessage());
++        throw MetaStoreUtils.newMetaException(ex);
+       } finally {
+         close();
+       }
+@@ -2667,7 +2667,7 @@ private void handleDirectSqlError(Exception ex) throws MetaException, NoSuchObje
+         if (ex instanceof MetaException) {
+           throw (MetaException)ex;
+         }
+-        throw new MetaException(ex.getMessage());
++        throw MetaStoreUtils.newMetaException(ex);
+       }
+       if (!isInTxn) {
+         rollbackTransaction();
+@@ -3220,12 +3220,8 @@ public void alterPartition(String dbname, String name, List<String> part_vals, P
+     } finally {
+       if (!success) {
+         rollbackTransaction();
+-        MetaException metaException = new MetaException(
+-            "The transaction for alter partition did not commit successfully.");
+-        if (e != null) {
+-          metaException.initCause(e);
+-        }
+-        throw metaException;
++        throw MetaStoreUtils.newMetaException(
++            "The transaction for alter partition did not commit successfully.", e);
+       }
+     }
+   }
+@@ -3249,12 +3245,8 @@ public void alterPartitions(String dbname, String name, List<List<String>> part_
+     } finally {
+       if (!success) {
+         rollbackTransaction();
+-        MetaException metaException = new MetaException(
+-            "The transaction for alter partition did not commit successfully.");
+-        if (e != null) {
+-          metaException.initCause(e);
+-        }
+-        throw metaException;
++        throw MetaStoreUtils.newMetaException(
++            "The transaction for alter partition did not commit successfully.", e);
+       }
+     }
+   }
+@@ -6639,7 +6631,7 @@ public boolean updatePartitionColumnStatistics(ColumnStatistics colStats, List<S
+       if (ex instanceof MetaException) {
+         throw (MetaException) ex;
+       }
+-      throw new MetaException(ex.getMessage());
++      throw MetaStoreUtils.newMetaException(ex);
+     } finally {
+       if (!committed) {
+         rollbackTransaction();
+@@ -6687,7 +6679,7 @@ protected ColumnStatistics getJdoResult(
+ 
+         try {
+         List<MTableColumnStatistics> mStats = getMTableColumnStatistics(getTable(), colNames, queryWrapper);
+-        if (mStats.isEmpty()) return null;
++        if (mStats == null || mStats.isEmpty()) return null;
+         // LastAnalyzed is stored per column, but thrift object has it per multiple columns.
+         // Luckily, nobody actually uses it, so we will set to lowest value of all columns for now.
+         ColumnStatisticsDesc desc = StatObjectConverter.getTableColumnStatisticsDesc(mStats.get(0));
+@@ -6831,7 +6823,7 @@ protected String describeResult() {
+       if (ex instanceof MetaException) {
+         throw (MetaException) ex;
+       }
+-      throw new MetaException(ex.getMessage());
++      throw MetaStoreUtils.newMetaException(ex);
+     } finally {
+       if (!committed) {
+         rollbackTransaction();
+@@ -7351,7 +7343,7 @@ private MVersionTable getMSchemaVersion() throws NoSuchObjectException, MetaExce
+           throw new MetaException("Version table not found. " + "The metastore is not upgraded to "
+               + MetaStoreSchemaInfoFactory.get(getConf()).getHiveSchemaVersion());
+         } else {
+-          throw e;
++          throw MetaStoreUtils.newMetaException(e);
+         }
+       }
+       committed = commitTransaction();
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/RetryingHMSHandler.java b/metastore/src/java/org/apache/hadoop/hive/metastore/RetryingHMSHandler.java
+index 5af9f05..a6e92c4 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/RetryingHMSHandler.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/RetryingHMSHandler.java
+@@ -144,8 +144,6 @@ public Result invokeInternal(final Object proxy, final Method method, final Obje
+           }
+         }
+         return new Result(object, retryCount);
+-      } catch (javax.jdo.JDOException e) {
+-        caughtException = e;
+       } catch (UndeclaredThrowableException e) {
+         if (e.getCause() != null) {
+           if (e.getCause() instanceof javax.jdo.JDOException) {
+-- 
+1.7.9.5
+

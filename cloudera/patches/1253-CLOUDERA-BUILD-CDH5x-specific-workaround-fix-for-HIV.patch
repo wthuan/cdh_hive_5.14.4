@@ -1,0 +1,31 @@
+From f06feba1ac35238c45d18e339f0a5f32dd11d624 Mon Sep 17 00:00:00 2001
+From: Naveen Gangam <ngangam@cloudera.com>
+Date: Wed, 23 Aug 2017 13:50:57 -0400
+Subject: [PATCH 1253/1363] CLOUDERA-BUILD: CDH5x specific workaround fix for
+ HIVE-16912 as we use jdk6 drivers
+
+Change-Id: Ie8e9d2ab816363103fcfc32945d0debaaef0175c
+---
+ .../org/apache/hive/beeline/HiveSchemaTool.java    |    3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/beeline/src/java/org/apache/hive/beeline/HiveSchemaTool.java b/beeline/src/java/org/apache/hive/beeline/HiveSchemaTool.java
+index 9120a5c..85c78d1 100644
+--- a/beeline/src/java/org/apache/hive/beeline/HiveSchemaTool.java
++++ b/beeline/src/java/org/apache/hive/beeline/HiveSchemaTool.java
+@@ -727,10 +727,11 @@ boolean validateSchemaTables(Connection conn) throws HiveMetaException {
+     hmsConn = getConnectionToMetastore(false);
+ 
+     LOG.debug("Validating tables in the schema for version " + version);
++    String schemaName  = System.getProperty("hive.schematool.db.schemaname");
+     try {
+       metadata       = conn.getMetaData();
+       String[] types = {"TABLE"};
+-      rs             = metadata.getTables(null, null, "%", types);
++      rs             = metadata.getTables(null, schemaName, "%", types);
+       String table   = null;
+ 
+       while (rs.next()) {
+-- 
+1.7.9.5
+

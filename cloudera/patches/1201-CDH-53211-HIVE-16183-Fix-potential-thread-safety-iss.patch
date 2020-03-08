@@ -1,0 +1,671 @@
+From aa51beed6cbd6266f4d8ca5535dc780667f2b207 Mon Sep 17 00:00:00 2001
+From: Xuefu Zhang <xuefu@uber.com>
+Date: Thu, 16 Mar 2017 19:20:41 -0700
+Subject: [PATCH 1201/1363] CDH-53211 HIVE-16183: Fix potential thread safety
+ issues with static variables (reviewed by rui,
+ sergey, and peter)
+
+Conflicts:
+	beeline/src/java/org/apache/hive/beeline/HiveSchemaHelper.java
+	beeline/src/java/org/apache/hive/beeline/HiveSchemaTool.java
+	common/src/java/org/apache/hadoop/hive/common/LogUtils.java
+	common/src/java/org/apache/hadoop/hive/common/StatsSetupConst.java
+	itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetastoreVersion.java
+	metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreSchemaInfo.java
+	ql/src/java/org/apache/hadoop/hive/ql/exec/ArchiveUtils.java
+	ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
+	ql/src/java/org/apache/hadoop/hive/ql/exec/vector/VectorizationContext.java
+	ql/src/java/org/apache/hadoop/hive/ql/exec/vector/mapjoin/fast/VectorMapJoinFastHashTable.java
+	ql/src/java/org/apache/hadoop/hive/ql/history/HiveHistoryImpl.java
+	ql/src/java/org/apache/hadoop/hive/ql/index/HiveIndex.java
+	ql/src/java/org/apache/hadoop/hive/ql/io/HiveFileFormatUtils.java
+	ql/src/java/org/apache/hadoop/hive/ql/io/HiveInputFormat.java
+	ql/src/java/org/apache/hadoop/hive/ql/io/orc/OrcInputFormat.java
+	ql/src/java/org/apache/hadoop/hive/ql/optimizer/GenMapRedUtils.java
+	ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/Vectorizer.java
+	ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/VectorizerReason.java
+	ql/src/java/org/apache/hadoop/hive/ql/parse/BaseSemanticAnalyzer.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/AbstractVectorDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/MapJoinDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/ReduceSinkDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorAppMasterEventDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorFileSinkDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorFilterDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorLimitDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorMapJoinDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorMapJoinInfo.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorPartitionDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorReduceSinkDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorReduceSinkInfo.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorSMBJoinDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorSelectDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorSparkHashTableSinkDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorSparkPartitionPruningSinkDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/plan/VectorTableScanDesc.java
+	ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFInternalInterval.java
+	ql/src/test/org/apache/hadoop/hive/ql/exec/vector/mapjoin/fast/CheckFastRowHashMap.java
+	ql/src/test/org/apache/hadoop/hive/ql/exec/vector/mapjoin/fast/CommonFastHashTable.java
+	serde/src/java/org/apache/hadoop/hive/serde2/SerDeUtils.java
+	serde/src/java/org/apache/hadoop/hive/serde2/lazy/fast/LazySimpleDeserializeRead.java
+	serde/src/java/org/apache/hadoop/hive/serde2/lazy/fast/StringToDouble.java
+	serde/src/java/org/apache/hadoop/hive/serde2/lazybinary/LazyBinaryUtils.java
+	serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/TypeInfoUtils.java
+	shims/common/src/main/java/org/apache/hadoop/hive/io/HdfsUtils.java
+	shims/common/src/main/java/org/apache/hadoop/hive/shims/ShimLoader.java
+	storage-api/src/java/org/apache/hadoop/hive/common/type/FastHiveDecimalImpl.java
+	storage-api/src/java/org/apache/hadoop/hive/common/type/RandomTypeUtil.java
+
+Change-Id: Ieaf5d4578e208c72d0137e877d86293dd031a50c
+---
+ .../java/org/apache/hive/beeline/BeeLineOpts.java  |    2 +-
+ .../java/org/apache/hadoop/hive/cli/RCFileCat.java |   13 +++++++------
+ .../org/apache/hadoop/hive/cli/TestRCFileCat.java  |    4 +---
+ .../org/apache/hadoop/hive/common/LogUtils.java    |    4 ++--
+ .../apache/hadoop/hive/ql/exec/ArchiveUtils.java   |    3 +--
+ .../hadoop/hive/ql/exec/FunctionRegistry.java      |    2 +-
+ .../org/apache/hadoop/hive/ql/exec/Utilities.java  |   16 ++++++++--------
+ .../ql/exec/vector/expressions/CuckooSetBytes.java |    4 ++--
+ .../hadoop/hive/ql/history/HiveHistoryImpl.java    |    3 +--
+ .../org/apache/hadoop/hive/ql/index/HiveIndex.java |    3 +--
+ .../hadoop/hive/ql/io/HiveFileFormatUtils.java     |    1 -
+ .../apache/hadoop/hive/ql/io/HiveInputFormat.java  |    3 +--
+ .../java/org/apache/hadoop/hive/ql/io/RCFile.java  |    2 +-
+ .../hadoop/hive/ql/io/orc/OrcInputFormat.java      |    1 -
+ .../hive/ql/io/rcfile/stats/PartialScanTask.java   |    6 +-----
+ .../hadoop/hive/ql/metadata/VirtualColumn.java     |    2 +-
+ .../hadoop/hive/ql/optimizer/GenMapRedUtils.java   |    2 +-
+ .../ListBucketingPrunerUtils.java                  |    4 ++--
+ .../optimizer/physical/GenMRSkewJoinProcessor.java |   10 +++++-----
+ .../hive/ql/optimizer/physical/Vectorizer.java     |    1 -
+ .../hadoop/hive/ql/parse/BaseSemanticAnalyzer.java |    4 ++--
+ .../hadoop/hive/ql/parse/DDLSemanticAnalyzer.java  |    2 +-
+ .../apache/hadoop/hive/ql/parse/WindowingSpec.java |    2 +-
+ .../hadoop/hive/ql/plan/AbstractVectorDesc.java    |    2 ++
+ .../apache/hadoop/hive/ql/plan/GroupByDesc.java    |    2 +-
+ .../hadoop/hive/ql/plan/VectorGroupByDesc.java     |    2 +-
+ .../hadoop/hive/ql/processors/HiveCommand.java     |    2 +-
+ .../hadoop/hive/serde2/avro/AvroDeserializer.java  |    2 +-
+ .../hive/io/HiveIOExceptionHandlerChain.java       |    2 +-
+ .../hadoop/hive/io/HiveIOExceptionHandlerUtil.java |    4 ++--
+ .../org/apache/hadoop/hive/shims/ShimLoader.java   |    2 +-
+ .../hive/testutils/jdbc/HiveBurnInClient.java      |    4 ++--
+ 32 files changed, 53 insertions(+), 63 deletions(-)
+
+diff --git a/beeline/src/java/org/apache/hive/beeline/BeeLineOpts.java b/beeline/src/java/org/apache/hive/beeline/BeeLineOpts.java
+index eebbadd..36cf6c8 100644
+--- a/beeline/src/java/org/apache/hive/beeline/BeeLineOpts.java
++++ b/beeline/src/java/org/apache/hive/beeline/BeeLineOpts.java
+@@ -60,7 +60,7 @@
+   public static final char DEFAULT_DELIMITER_FOR_DSV = '|';
+   public static final int DEFAULT_MAX_COLUMN_WIDTH = 50;
+ 
+-  public static String URL_ENV_PREFIX = "BEELINE_URL_";
++  public static final String URL_ENV_PREFIX = "BEELINE_URL_";
+ 
+   private final BeeLine beeLine;
+   private boolean autosave = false;
+diff --git a/cli/src/java/org/apache/hadoop/hive/cli/RCFileCat.java b/cli/src/java/org/apache/hadoop/hive/cli/RCFileCat.java
+index f1806a0..24550fa 100644
+--- a/cli/src/java/org/apache/hadoop/hive/cli/RCFileCat.java
++++ b/cli/src/java/org/apache/hadoop/hive/cli/RCFileCat.java
+@@ -54,7 +54,7 @@
+   // In verbose mode, print an update per RECORD_PRINT_INTERVAL records
+   private static final int RECORD_PRINT_INTERVAL = (1024*1024);
+ 
+-  protected static boolean test=false;
++  protected boolean test = false;
+ 
+   public RCFileCat() {
+     super();
+@@ -63,12 +63,12 @@ public RCFileCat() {
+       onUnmappableCharacter(CodingErrorAction.REPLACE);
+   }
+ 
+-  private static CharsetDecoder decoder;
++  private CharsetDecoder decoder;
+ 
+   Configuration conf = null;
+ 
+-  private static String TAB ="\t";
+-  private static String NEWLINE ="\r\n";
++  private static final String TAB ="\t";
++  private static final String NEWLINE ="\r\n";
+ 
+   @Override
+   public int run(String[] args) throws Exception {
+@@ -243,7 +243,7 @@ public void setConf(Configuration conf) {
+     this.conf = conf;
+   }
+ 
+-  private static String Usage = "RCFileCat [--start=start_offet] [--length=len] [--verbose] " +
++  private static final String Usage = "RCFileCat [--start=start_offet] [--length=len] [--verbose] " +
+       "[--column-sizes | --column-sizes-pretty] [--file-sizes] fileName";
+ 
+   public static void main(String[] args) {
+@@ -262,7 +262,7 @@ public static void main(String[] args) {
+     }
+   }
+ 
+-  private static void setupBufferedOutput() {
++  private void setupBufferedOutput() {
+     OutputStream pdataOut;
+     if (test) {
+       pdataOut = System.out;
+@@ -275,6 +275,7 @@ private static void setupBufferedOutput() {
+         new PrintStream(bos, false);
+     System.setOut(ps);
+   }
++
+   private static void printUsage(String errorMsg) {
+     System.err.println(Usage);
+     if(errorMsg != null) {
+diff --git a/cli/src/test/org/apache/hadoop/hive/cli/TestRCFileCat.java b/cli/src/test/org/apache/hadoop/hive/cli/TestRCFileCat.java
+index 11ceb31..4cb4a19 100644
+--- a/cli/src/test/org/apache/hadoop/hive/cli/TestRCFileCat.java
++++ b/cli/src/test/org/apache/hadoop/hive/cli/TestRCFileCat.java
+@@ -25,8 +25,6 @@
+ import java.io.File;
+ import java.io.IOException;
+ import java.io.PrintStream;
+-import java.net.URI;
+-
+ import org.apache.hadoop.conf.Configuration;
+ import org.apache.hadoop.fs.FileSystem;
+ import org.apache.hadoop.fs.Path;
+@@ -77,7 +75,7 @@ public void testRCFileCat() throws Exception {
+     writer.close();
+ 
+     RCFileCat fileCat = new RCFileCat();
+-    RCFileCat.test=true;
++    fileCat.test=true;
+     fileCat.setConf(new Configuration());
+ 
+     // set fake input and output streams
+diff --git a/common/src/java/org/apache/hadoop/hive/common/LogUtils.java b/common/src/java/org/apache/hadoop/hive/common/LogUtils.java
+index 28871b0..e1b567a 100644
+--- a/common/src/java/org/apache/hadoop/hive/common/LogUtils.java
++++ b/common/src/java/org/apache/hadoop/hive/common/LogUtils.java
+@@ -43,8 +43,8 @@
+   /**
+    * Constants for log masking
+    */
+-  private static String KEY_TO_MASK_WITH = "password";
+-  private static String MASKED_VALUE = "###_MASKED_###";
++  private static final String KEY_TO_MASK_WITH = "password";
++  private static final String MASKED_VALUE = "###_MASKED_###";
+ 
+   @SuppressWarnings("serial")
+   public static class LogInitializationException extends Exception {
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/ArchiveUtils.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/ArchiveUtils.java
+index 54b61a9..86ee256 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/ArchiveUtils.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/ArchiveUtils.java
+@@ -40,7 +40,6 @@
+ import org.apache.hadoop.hive.ql.metadata.HiveException;
+ import org.apache.hadoop.hive.ql.metadata.Partition;
+ import org.apache.hadoop.hive.ql.metadata.Table;
+-import org.apache.hadoop.hive.shims.HadoopShims;
+ 
+ /**
+  * ArchiveUtils.
+@@ -50,7 +49,7 @@
+ public final class ArchiveUtils {
+   private static final Log LOG = LogFactory.getLog(ArchiveUtils.class.getName());
+ 
+-  public static String ARCHIVING_LEVEL = "archiving_level";
++  public static final String ARCHIVING_LEVEL = "archiving_level";
+ 
+   /**
+    * PartSpecInfo keeps fields and values extracted from partial partition info
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/FunctionRegistry.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/FunctionRegistry.java
+index 88572cd..890c272 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/FunctionRegistry.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/FunctionRegistry.java
+@@ -718,7 +718,7 @@ public static TypeInfo getCommonClassForUnionAll(TypeInfo a, TypeInfo b) {
+    *
+    * @return null if no common class could be found.
+    */
+-  public static TypeInfo getCommonClassForComparison(TypeInfo a, TypeInfo b) {
++  public static synchronized TypeInfo getCommonClassForComparison(TypeInfo a, TypeInfo b) {
+     // If same return one of them
+     if (a.equals(b)) {
+       return a;
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
+index 17cc681..edb8976 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
+@@ -220,17 +220,17 @@
+    * The object in the reducer are composed of these top level fields.
+    */
+ 
+-  public static String HADOOP_LOCAL_FS = "file:///";
+-  public static String MAP_PLAN_NAME = "map.xml";
+-  public static String REDUCE_PLAN_NAME = "reduce.xml";
+-  public static String MERGE_PLAN_NAME = "merge.xml";
++  public static final String HADOOP_LOCAL_FS = "file:///";
++  public static final String MAP_PLAN_NAME = "map.xml";
++  public static final String REDUCE_PLAN_NAME = "reduce.xml";
++  public static final String MERGE_PLAN_NAME = "merge.xml";
+   public static final String INPUT_NAME = "iocontext.input.name";
+   public static final String MAPRED_MAPPER_CLASS = "mapred.mapper.class";
+   public static final String MAPRED_REDUCER_CLASS = "mapred.reducer.class";
+   public static final String HIVE_ADDED_JARS = "hive.added.jars";
+ 
+   @Deprecated
+-  protected static String DEPRECATED_MAPRED_DFSCLIENT_PARALLELISM_MAX = "mapred.dfsclient.parallelism.max";
++  protected static final String DEPRECATED_MAPRED_DFSCLIENT_PARALLELISM_MAX = "mapred.dfsclient.parallelism.max";
+ 
+   /**
+    * ReduceField:
+@@ -1200,8 +1200,8 @@ protected synchronized Kryo initialValue() {
+   // Note: When DDL supports specifying what string to represent null,
+   // we should specify "NULL" to represent null in the temp table, and then
+   // we can make the following translation deprecated.
+-  public static String nullStringStorage = "\\N";
+-  public static String nullStringOutput = "NULL";
++  public static final String nullStringStorage = "\\N";
++  public static final String nullStringOutput = "NULL";
+ 
+   public static Random randGen = new Random();
+ 
+@@ -2988,7 +2988,7 @@ public static void setColumnTypeList(JobConf jobConf, Operator op, boolean exclu
+     jobConf.set(serdeConstants.LIST_COLUMN_TYPES, columnTypesString);
+   }
+ 
+-  public static String suffix = ".hashtable";
++  public static final String suffix = ".hashtable";
+ 
+   public static Path generatePath(Path basePath, String dumpFilePrefix,
+       Byte tag, String bigBucketFileName) {
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/expressions/CuckooSetBytes.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/expressions/CuckooSetBytes.java
+index fe75ce3..b9dc938 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/expressions/CuckooSetBytes.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/vector/expressions/CuckooSetBytes.java
+@@ -39,8 +39,8 @@
+   private int salt = 0;
+   private Random gen = new Random(676983475);
+   private int rehashCount = 0;
+-  private static long INT_MASK  = 0x00000000ffffffffL;
+-  private static long BYTE_MASK = 0x00000000000000ffL;
++  private static final long INT_MASK  = 0x00000000ffffffffL;
++  private static final long BYTE_MASK = 0x00000000000000ffL;
+ 
+   /**
+    * Allocate a new set to hold expectedSize values. Re-allocation to expand
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/history/HiveHistoryImpl.java b/ql/src/java/org/apache/hadoop/hive/ql/history/HiveHistoryImpl.java
+index 15c0e2d..e14ba32 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/history/HiveHistoryImpl.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/history/HiveHistoryImpl.java
+@@ -46,7 +46,6 @@
+  * Each session uses a new object, which creates a new file.
+  */
+ public class HiveHistoryImpl implements HiveHistory{
+-
+   PrintWriter histStream; // History File stream
+ 
+   String histFileName; // History file name
+@@ -309,7 +308,7 @@ public void progressTask(String queryId, Task<? extends Serializable> task) {
+   /**
+    * write out counters.
+    */
+-  static ThreadLocal<Map<String,String>> ctrMapFactory =
++  static final ThreadLocal<Map<String,String>> ctrMapFactory =
+       new ThreadLocal<Map<String, String>>() {
+     @Override
+     protected Map<String,String> initialValue() {
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/index/HiveIndex.java b/ql/src/java/org/apache/hadoop/hive/ql/index/HiveIndex.java
+index 835caf1..bbaf358 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/index/HiveIndex.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/index/HiveIndex.java
+@@ -24,10 +24,9 @@
+  * Holds index related constants
+  */
+ public class HiveIndex {
+-
+   public static final Log l4j = LogFactory.getLog("HiveIndex");
+ 
+-  public static String INDEX_TABLE_CREATETIME = "hive.index.basetbl.dfs.lastModifiedTime";
++  public static final String INDEX_TABLE_CREATETIME = "hive.index.basetbl.dfs.lastModifiedTime";
+ 
+   public static enum IndexType {
+     AGGREGATE_TABLE("aggregate", "org.apache.hadoop.hive.ql.AggregateIndexHandler"),
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/HiveFileFormatUtils.java b/ql/src/java/org/apache/hadoop/hive/ql/io/HiveFileFormatUtils.java
+index d06f372..b3df79d 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/HiveFileFormatUtils.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/HiveFileFormatUtils.java
+@@ -69,7 +69,6 @@
+  *
+  */
+ public final class HiveFileFormatUtils {
+-
+   static {
+     outputFormatSubstituteMap =
+         new ConcurrentHashMap<Class<?>, Class<? extends OutputFormat>>();
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/HiveInputFormat.java b/ql/src/java/org/apache/hadoop/hive/ql/io/HiveInputFormat.java
+index eedb95a..393f2ca 100755
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/HiveInputFormat.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/HiveInputFormat.java
+@@ -74,14 +74,13 @@
+  */
+ public class HiveInputFormat<K extends WritableComparable, V extends Writable>
+     implements InputFormat<K, V>, JobConfigurable {
+-
+   private static final String CLASS_NAME = HiveInputFormat.class.getName();
+   private static final Log LOG = LogFactory.getLog(CLASS_NAME);
+ 
+   /**
+    * A cache of InputFormat instances.
+    */
+-  private static Map<Class, InputFormat<WritableComparable, Writable>> inputFormats 
++  private static final Map<Class, InputFormat<WritableComparable, Writable>> inputFormats
+     = new ConcurrentHashMap<Class, InputFormat<WritableComparable, Writable>>();
+ 
+   private JobConf job;
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/RCFile.java b/ql/src/java/org/apache/hadoop/hive/ql/io/RCFile.java
+index 2a27676..5dea00d 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/RCFile.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/RCFile.java
+@@ -839,7 +839,7 @@ public static Metadata createMetadata(Text... values) {
+     // the max size of memory for buffering records before writes them out
+     private int columnsBufferSize = 4 * 1024 * 1024; // 4M
+     // the conf string for COLUMNS_BUFFER_SIZE
+-    public static String COLUMNS_BUFFER_SIZE_CONF_STR = "hive.io.rcfile.record.buffer.size";
++    public static final String COLUMNS_BUFFER_SIZE_CONF_STR = "hive.io.rcfile.record.buffer.size";
+ 
+     // how many records already buffered
+     private int bufferedRecords = 0;
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/orc/OrcInputFormat.java b/ql/src/java/org/apache/hadoop/hive/ql/io/orc/OrcInputFormat.java
+index 2f17633..4130872 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/orc/OrcInputFormat.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/orc/OrcInputFormat.java
+@@ -1099,7 +1099,6 @@ public float getProgress() throws IOException {
+     }
+   }
+ 
+-
+   @Override
+   public RowReader<OrcStruct> getReader(InputSplit inputSplit,
+                                         Options options) throws IOException {
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/rcfile/stats/PartialScanTask.java b/ql/src/java/org/apache/hadoop/hive/ql/io/rcfile/stats/PartialScanTask.java
+index 77966d0..af85bb0 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/rcfile/stats/PartialScanTask.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/rcfile/stats/PartialScanTask.java
+@@ -33,7 +33,6 @@
+ import org.apache.hadoop.fs.Path;
+ import org.apache.hadoop.hive.common.JavaUtils;
+ import org.apache.hadoop.hive.common.StatsSetupConst;
+-import org.apache.hadoop.hive.common.StatsSetupConst.StatDB;
+ import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.ql.Context;
+ import org.apache.hadoop.hive.ql.DriverContext;
+@@ -58,7 +57,6 @@
+ import org.apache.hadoop.io.NullWritable;
+ import org.apache.hadoop.mapred.Counters;
+ import org.apache.hadoop.mapred.FileInputFormat;
+-import org.apache.hadoop.mapred.InputFormat;
+ import org.apache.hadoop.mapred.JobClient;
+ import org.apache.hadoop.mapred.JobConf;
+ import org.apache.hadoop.mapred.RunningJob;
+@@ -75,8 +73,6 @@
+ @SuppressWarnings( { "deprecation"})
+ public class PartialScanTask extends Task<PartialScanWork> implements
+     Serializable, HadoopJobExecHook {
+-
+-
+   private static final long serialVersionUID = 1L;
+ 
+   protected transient JobConf job;
+@@ -271,7 +267,7 @@ public String getName() {
+     return "RCFile Statistics Partial Scan";
+   }
+ 
+-  public static String INPUT_SEPERATOR = ":";
++  public static final String INPUT_SEPERATOR = ":";
+ 
+   public static void main(String[] args) {
+     String inputPathStr = null;
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/metadata/VirtualColumn.java b/ql/src/java/org/apache/hadoop/hive/ql/metadata/VirtualColumn.java
+index 59a32ba..cd1e050 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/metadata/VirtualColumn.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/metadata/VirtualColumn.java
+@@ -64,7 +64,7 @@
+   public static final VirtualColumn GROUPINGID =
+       new VirtualColumn("GROUPING__ID", (PrimitiveTypeInfo) TypeInfoFactory.intTypeInfo);
+ 
+-  public static ImmutableSet<String> VIRTUAL_COLUMN_NAMES =
++  public static final ImmutableSet<String> VIRTUAL_COLUMN_NAMES =
+       ImmutableSet.of(FILENAME.getName(), BLOCKOFFSET.getName(), ROWOFFSET.getName(),
+           RAWDATASIZE.getName(), GROUPINGID.getName(), ROWID.getName());
+ 
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/GenMapRedUtils.java b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/GenMapRedUtils.java
+index 04cec95..f0ffedf 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/GenMapRedUtils.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/GenMapRedUtils.java
+@@ -126,7 +126,7 @@
+  * map-reduce tasks.
+  */
+ public final class GenMapRedUtils {
+-  private static Log LOG;
++  private static final Log LOG;
+ 
+   static {
+     LOG = LogFactory.getLog("org.apache.hadoop.hive.ql.optimizer.GenMapRedUtils");
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/listbucketingpruner/ListBucketingPrunerUtils.java b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/listbucketingpruner/ListBucketingPrunerUtils.java
+index ccb75eb..78c1076 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/listbucketingpruner/ListBucketingPrunerUtils.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/listbucketingpruner/ListBucketingPrunerUtils.java
+@@ -37,10 +37,10 @@
+ public final class ListBucketingPrunerUtils {
+ 
+   /* Default list bucketing directory name. internal use only not for client. */
+-  public static String HIVE_LIST_BUCKETING_DEFAULT_DIR_NAME =
++  public static final String HIVE_LIST_BUCKETING_DEFAULT_DIR_NAME =
+       "HIVE_DEFAULT_LIST_BUCKETING_DIR_NAME";
+   /* Default list bucketing directory key. internal use only not for client. */
+-  public static String HIVE_LIST_BUCKETING_DEFAULT_KEY = "HIVE_DEFAULT_LIST_BUCKETING_KEY";
++  public static final String HIVE_LIST_BUCKETING_DEFAULT_KEY = "HIVE_DEFAULT_LIST_BUCKETING_KEY";
+ 
+   /**
+    * Decide if pruner skips the skewed directory
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/GenMRSkewJoinProcessor.java b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/GenMRSkewJoinProcessor.java
+index 4f4ec0d..075a593 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/GenMRSkewJoinProcessor.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/GenMRSkewJoinProcessor.java
+@@ -386,11 +386,11 @@ public static boolean skewJoinEnabled(HiveConf conf, JoinOperator joinOp) {
+     return true;
+   }
+ 
+-  private static String skewJoinPrefix = "hive_skew_join";
+-  private static String UNDERLINE = "_";
+-  private static String BIGKEYS = "bigkeys";
+-  private static String SMALLKEYS = "smallkeys";
+-  private static String RESULTS = "results";
++  private static final String skewJoinPrefix = "hive_skew_join";
++  private static final String UNDERLINE = "_";
++  private static final String BIGKEYS = "bigkeys";
++  private static final String SMALLKEYS = "smallkeys";
++  private static final String RESULTS = "results";
+ 
+   static Path getBigKeysDir(Path baseDir, Byte srcTbl) {
+     return StringInternUtils.internUriStringsInPath(
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/Vectorizer.java b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/Vectorizer.java
+index 156a4a6..41208db 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/Vectorizer.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/physical/Vectorizer.java
+@@ -32,7 +32,6 @@
+ import java.util.Stack;
+ import java.util.TreeMap;
+ import java.util.regex.Pattern;
+-
+ import org.apache.commons.logging.Log;
+ import org.apache.commons.logging.LogFactory;
+ import org.apache.hadoop.hive.conf.HiveConf;
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/parse/BaseSemanticAnalyzer.java b/ql/src/java/org/apache/hadoop/hive/ql/parse/BaseSemanticAnalyzer.java
+index ac46270..5985953 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/parse/BaseSemanticAnalyzer.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/parse/BaseSemanticAnalyzer.java
+@@ -100,8 +100,8 @@
+    */
+   protected Set<FileSinkDesc> acidFileSinks = new HashSet<FileSinkDesc>();
+ 
+-  public static int HIVE_COLUMN_ORDER_ASC = 1;
+-  public static int HIVE_COLUMN_ORDER_DESC = 0;
++  public static final int HIVE_COLUMN_ORDER_ASC = 1;
++  public static final int HIVE_COLUMN_ORDER_DESC = 0;
+ 
+   /**
+    * ReadEntitites that are passed to the hooks.
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/parse/DDLSemanticAnalyzer.java b/ql/src/java/org/apache/hadoop/hive/ql/parse/DDLSemanticAnalyzer.java
+index 949eea2..bc4ec01 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/parse/DDLSemanticAnalyzer.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/parse/DDLSemanticAnalyzer.java
+@@ -1712,7 +1712,7 @@ private void analyzeAlterTableCompact(ASTNode ast, String tableName,
+   static class QualifiedNameUtil {
+ 
+     // delimiter to check DOT delimited qualified names
+-    static String delimiter = "\\.";
++    static final String delimiter = "\\.";
+ 
+     /**
+      * Get the fully qualified name in the ast. e.g. the ast of the form ^(DOT
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/parse/WindowingSpec.java b/ql/src/java/org/apache/hadoop/hive/ql/parse/WindowingSpec.java
+index a181f7c..43e7852 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/parse/WindowingSpec.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/parse/WindowingSpec.java
+@@ -567,7 +567,7 @@ public String toString()
+    */
+   public abstract static class BoundarySpec implements Comparable<BoundarySpec>
+   {
+-    public static int UNBOUNDED_AMOUNT = Integer.MAX_VALUE;
++    public static final int UNBOUNDED_AMOUNT = Integer.MAX_VALUE;
+ 
+     public abstract Direction getDirection();
+     public abstract void setDirection(Direction dir);
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/plan/AbstractVectorDesc.java b/ql/src/java/org/apache/hadoop/hive/ql/plan/AbstractVectorDesc.java
+index 5157ebd..5f26922 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/plan/AbstractVectorDesc.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/plan/AbstractVectorDesc.java
+@@ -20,6 +20,8 @@
+ 
+ public class AbstractVectorDesc implements VectorDesc {
+ 
++  private static final long serialVersionUID = 1L;
++
+   @Override
+   public Object clone() throws CloneNotSupportedException {
+     throw new CloneNotSupportedException("clone not supported");
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/plan/GroupByDesc.java b/ql/src/java/org/apache/hadoop/hive/ql/plan/GroupByDesc.java
+index cd2bcfe..db3cbb1 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/plan/GroupByDesc.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/plan/GroupByDesc.java
+@@ -42,7 +42,7 @@
+    * MERGEPARTIAL: FINAL for non-distinct aggregations, COMPLETE for distinct
+    * aggregations.
+    */
+-  private static long serialVersionUID = 1L;
++  private static final long serialVersionUID = 1L;
+ 
+   /**
+    * Mode.
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/plan/VectorGroupByDesc.java b/ql/src/java/org/apache/hadoop/hive/ql/plan/VectorGroupByDesc.java
+index b92c38b..9901b7e 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/plan/VectorGroupByDesc.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/plan/VectorGroupByDesc.java
+@@ -28,7 +28,7 @@
+  */
+ public class VectorGroupByDesc extends AbstractVectorDesc  {
+ 
+-  private static long serialVersionUID = 1L;
++  private static final long serialVersionUID = 1L;
+ 
+   private boolean isReduce;
+   private boolean isVectorGroupBatches;
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/processors/HiveCommand.java b/ql/src/java/org/apache/hadoop/hive/ql/processors/HiveCommand.java
+index d70d837..3fe6420 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/processors/HiveCommand.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/processors/HiveCommand.java
+@@ -36,7 +36,7 @@
+   DELETE(),
+   COMPILE();
+ 
+-  public static boolean ONLY_FOR_TESTING = true;
++  public static final boolean ONLY_FOR_TESTING = true;
+   private boolean usedOnlyForTesting;
+ 
+   HiveCommand() {
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/avro/AvroDeserializer.java b/serde/src/java/org/apache/hadoop/hive/serde2/avro/AvroDeserializer.java
+index 7f97baf..d2db62c 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/avro/AvroDeserializer.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/avro/AvroDeserializer.java
+@@ -74,7 +74,7 @@
+    * Flag to print the re-encoding warning message only once. Avoid excessive logging for each
+    * record encoding.
+    */
+-  private static boolean warnedOnce = false;
++  private boolean warnedOnce = false;
+   /**
+    * When encountering a record with an older schema than the one we're trying
+    * to read, it is necessary to re-encode with a reader against the newer schema.
+diff --git a/shims/common/src/main/java/org/apache/hadoop/hive/io/HiveIOExceptionHandlerChain.java b/shims/common/src/main/java/org/apache/hadoop/hive/io/HiveIOExceptionHandlerChain.java
+index a58f1f2..d937ddf 100644
+--- a/shims/common/src/main/java/org/apache/hadoop/hive/io/HiveIOExceptionHandlerChain.java
++++ b/shims/common/src/main/java/org/apache/hadoop/hive/io/HiveIOExceptionHandlerChain.java
+@@ -35,7 +35,7 @@
+  */
+ public class HiveIOExceptionHandlerChain {
+ 
+-  public static String HIVE_IO_EXCEPTION_HANDLE_CHAIN = "hive.io.exception.handlers";
++  public static final String HIVE_IO_EXCEPTION_HANDLE_CHAIN = "hive.io.exception.handlers";
+ 
+   @SuppressWarnings("unchecked")
+   public static HiveIOExceptionHandlerChain getHiveIOExceptionHandlerChain(
+diff --git a/shims/common/src/main/java/org/apache/hadoop/hive/io/HiveIOExceptionHandlerUtil.java b/shims/common/src/main/java/org/apache/hadoop/hive/io/HiveIOExceptionHandlerUtil.java
+index d972edb..6af3c8c 100644
+--- a/shims/common/src/main/java/org/apache/hadoop/hive/io/HiveIOExceptionHandlerUtil.java
++++ b/shims/common/src/main/java/org/apache/hadoop/hive/io/HiveIOExceptionHandlerUtil.java
+@@ -24,10 +24,10 @@
+ 
+ public class HiveIOExceptionHandlerUtil {
+ 
+-  private static ThreadLocal<HiveIOExceptionHandlerChain> handlerChainInstance =
++  private static final ThreadLocal<HiveIOExceptionHandlerChain> handlerChainInstance =
+     new ThreadLocal<HiveIOExceptionHandlerChain>();
+ 
+-  private static HiveIOExceptionHandlerChain get(JobConf job) {
++  private static synchronized HiveIOExceptionHandlerChain get(JobConf job) {
+     HiveIOExceptionHandlerChain cache = HiveIOExceptionHandlerUtil.handlerChainInstance
+         .get();
+     if (cache == null) {
+diff --git a/shims/common/src/main/java/org/apache/hadoop/hive/shims/ShimLoader.java b/shims/common/src/main/java/org/apache/hadoop/hive/shims/ShimLoader.java
+index f19e3c6..bbc3f7b 100644
+--- a/shims/common/src/main/java/org/apache/hadoop/hive/shims/ShimLoader.java
++++ b/shims/common/src/main/java/org/apache/hadoop/hive/shims/ShimLoader.java
+@@ -29,7 +29,7 @@
+  *
+  */
+ public abstract class ShimLoader {
+-  private static HadoopShims hadoopShims;
++  private static volatile HadoopShims hadoopShims;
+   private static JettyShims jettyShims;
+   private static AppenderSkeleton eventCounter;
+   private static HadoopThriftAuthBridge hadoopThriftAuthBridge;
+diff --git a/testutils/src/java/org/apache/hive/testutils/jdbc/HiveBurnInClient.java b/testutils/src/java/org/apache/hive/testutils/jdbc/HiveBurnInClient.java
+index 41ade5f..140c198 100644
+--- a/testutils/src/java/org/apache/hive/testutils/jdbc/HiveBurnInClient.java
++++ b/testutils/src/java/org/apache/hive/testutils/jdbc/HiveBurnInClient.java
+@@ -26,10 +26,10 @@
+ 
+ 
+ public class HiveBurnInClient {
+-  private static String driverName = "org.apache.hive.jdbc.HiveDriver";
++  private static final String driverName = "org.apache.hive.jdbc.HiveDriver";
+ 
+   //default 80k (runs slightly over 1 day long)
+-  private final static int NUM_QUERY_ITERATIONS = 80000;
++  private static final int NUM_QUERY_ITERATIONS = 80000;
+ 
+   /**
+    * Creates 2 tables to query from
+-- 
+1.7.9.5
+

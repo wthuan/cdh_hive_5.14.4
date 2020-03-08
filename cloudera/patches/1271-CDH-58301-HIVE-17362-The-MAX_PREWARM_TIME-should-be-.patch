@@ -1,0 +1,189 @@
+From 19615d4bdb17c89c57d168d48fc2b4c0600fce9a Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Wed, 23 Aug 2017 11:28:35 +0200
+Subject: [PATCH 1271/1363] CDH-58301: HIVE-17362: The MAX_PREWARM_TIME should
+ be configurable on HoS (Peter Vary, reviewed by
+ Xuefu Zhang)
+
+(cherry picked from commit a2c4aaede434c17fe017d588c8f3be174e47bf37)
+
+Change-Id: I5ef9aaa0e3613e10e23ae18221f7ede260f188ee
+---
+ .../java/org/apache/hadoop/hive/conf/HiveConf.java |    4 ++-
+ data/conf/spark/standalone/hive-site.xml           |   15 ++++++++++
+ data/conf/spark/yarn-client/hive-site.xml          |   10 +++++++
+ .../java/org/apache/hadoop/hive/ql/QTestUtil.java  |   30 ++------------------
+ .../hive/ql/exec/spark/RemoteHiveSparkClient.java  |   14 +++++----
+ 5 files changed, 38 insertions(+), 35 deletions(-)
+
+diff --git a/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java b/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+index b65ee0d..b10fda6 100644
+--- a/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
++++ b/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+@@ -2097,7 +2097,9 @@ public void setSparkConfigUpdated(boolean isSparkConfigUpdated) {
+ 
+     HIVE_PREWARM_ENABLED("hive.prewarm.enabled", false, "Enables container prewarm for Tez/Spark (Hadoop 2 only)"),
+     HIVE_PREWARM_NUM_CONTAINERS("hive.prewarm.numcontainers", 10, "Controls the number of containers to prewarm for Tez/Spark (Hadoop 2 only)"),
+-
++    HIVE_PREWARM_SPARK_TIMEOUT("hive.prewarm.spark.timeout", "5000ms",
++         new TimeValidator(TimeUnit.MILLISECONDS),
++         "Time to wait to finish prewarming spark executors"),
+     HIVESTAGEIDREARRANGE("hive.stageid.rearrange", "none", new StringSet("none", "idonly", "traverse", "execution"), ""),
+     HIVEEXPLAINDEPENDENCYAPPENDTASKTYPES("hive.explain.dependency.append.tasktype", false, ""),
+ 
+diff --git a/data/conf/spark/standalone/hive-site.xml b/data/conf/spark/standalone/hive-site.xml
+index f2ffe31..f6e6db1 100644
+--- a/data/conf/spark/standalone/hive-site.xml
++++ b/data/conf/spark/standalone/hive-site.xml
+@@ -201,6 +201,21 @@
+ </property>
+ 
+ <property>
++  <name>hive.prewarm.enabled</name>
++  <value>true</value>
++</property>
++
++<property>
++  <name>hive.prewarm.numcontainers</name>
++  <value>1</value>
++</property>
++
++<property>
++  <name>hive.prewarm.spark.timeout</name>
++  <value>30s</value>
++</property>
++
++<property>
+   <name>spark.serializer</name>
+   <value>org.apache.spark.serializer.KryoSerializer</value>
+ </property>
+diff --git a/data/conf/spark/yarn-client/hive-site.xml b/data/conf/spark/yarn-client/hive-site.xml
+index 283c729..21f195b 100644
+--- a/data/conf/spark/yarn-client/hive-site.xml
++++ b/data/conf/spark/yarn-client/hive-site.xml
+@@ -251,6 +251,16 @@
+ </property>
+ 
+ <property>
++  <name>hive.prewarm.enabled</name>
++  <value>true</value>
++</property>
++
++<property>
++  <name>hive.prewarm.spark.timeout</name>
++  <value>30s</value>
++</property>
++
++<property>
+   <name>spark.testing</name>
+   <value>true</value>
+ </property>
+diff --git a/itests/util/src/main/java/org/apache/hadoop/hive/ql/QTestUtil.java b/itests/util/src/main/java/org/apache/hadoop/hive/ql/QTestUtil.java
+index 7f990aa..4cd9292 100644
+--- a/itests/util/src/main/java/org/apache/hadoop/hive/ql/QTestUtil.java
++++ b/itests/util/src/main/java/org/apache/hadoop/hive/ql/QTestUtil.java
+@@ -1089,7 +1089,7 @@ public String cliInit(String tname, boolean recreate) throws Exception {
+     HiveConf.setVar(conf, HiveConf.ConfVars.HIVE_AUTHENTICATOR_MANAGER,
+     "org.apache.hadoop.hive.ql.security.DummyAuthenticator");
+     Utilities.clearWorkMap();
+-    CliSessionState ss = createSessionState();
++    CliSessionState ss = new CliSessionState(conf);
+     assert ss != null;
+     ss.in = System.in;
+ 
+@@ -1141,32 +1141,6 @@ public String cliInit(String tname, boolean recreate) throws Exception {
+     return outf.getAbsolutePath();
+   }
+ 
+-  private CliSessionState createSessionState() {
+-   return new CliSessionState(conf) {
+-      @Override
+-      public void setSparkSession(SparkSession sparkSession) {
+-        super.setSparkSession(sparkSession);
+-        if (sparkSession != null) {
+-          try {
+-            // Wait a little for cluster to init, at most 4 minutes
+-            long endTime = System.currentTimeMillis() + 240000;
+-            int expectedCores = conf.getInt("spark.executor.instances", 1) * 2;
+-            while (sparkSession.getMemoryAndCores().getSecond() < expectedCores) {
+-              if (System.currentTimeMillis() >= endTime) {
+-                String msg = "Timed out waiting for Spark cluster to init";
+-                throw new IllegalStateException(msg);
+-              }
+-              Thread.sleep(100);
+-            }
+-          } catch (Exception e) {
+-            String msg = "Error trying to obtain executor info: " + e;
+-            LOG.error(msg, e);
+-            throw new IllegalStateException(msg, e);
+-          }
+-        }
+-      }
+-    };
+-  }
+ 
+   private CliSessionState startSessionState()
+       throws IOException {
+@@ -1176,7 +1150,7 @@ private CliSessionState startSessionState()
+ 
+     String execEngine = conf.get("hive.execution.engine");
+     conf.set("hive.execution.engine", "mr");
+-    CliSessionState ss = createSessionState();
++    CliSessionState ss = new CliSessionState(conf);
+     assert ss != null;
+     ss.in = System.in;
+     ss.out = System.out;
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/spark/RemoteHiveSparkClient.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/spark/RemoteHiveSparkClient.java
+index a120d33..3a95eb3 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/spark/RemoteHiveSparkClient.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/spark/RemoteHiveSparkClient.java
+@@ -75,7 +75,6 @@
+ 
+   private static final String MR_JAR_PROPERTY = "tmpjars";
+   private static final transient Log LOG = LogFactory.getLog(RemoteHiveSparkClient.class);
+-  private static final long MAX_PREWARM_TIME = 5000; // 5s
+   private static final transient Splitter CSV_SPLITTER = Splitter.on(",").omitEmptyStrings();
+ 
+   private transient Map<String, String> conf;
+@@ -101,7 +100,8 @@ private void createRemoteClient() throws Exception {
+     remoteClient = SparkClientFactory.createClient(conf, hiveConf);
+ 
+     if (HiveConf.getBoolVar(hiveConf, ConfVars.HIVE_PREWARM_ENABLED) &&
+-        hiveConf.get("spark.master").startsWith("yarn-")) {
++            (hiveConf.get("spark.master").startsWith("yarn-") ||
++             hiveConf.get("spark.master").startsWith("local"))) {
+       int minExecutors = getExecutorsToWarm();
+       if (minExecutors <= 0) {
+         return;
+@@ -109,12 +109,14 @@ private void createRemoteClient() throws Exception {
+ 
+       LOG.info("Prewarm Spark executors. The minimum number of executors to warm is " + minExecutors);
+ 
+-      // Spend at most MAX_PREWARM_TIME to wait for executors to come up.
++      // Spend at most HIVE_PREWARM_SPARK_TIMEOUT to wait for executors to come up.
+       int curExecutors = 0;
++      long maxPrewarmTime = HiveConf.getTimeVar(hiveConf, ConfVars.HIVE_PREWARM_SPARK_TIMEOUT,
++          TimeUnit.MILLISECONDS);
+       long ts = System.currentTimeMillis();
+       do {
+         try {
+-          curExecutors = getExecutorCount(MAX_PREWARM_TIME, TimeUnit.MILLISECONDS);
++          curExecutors = getExecutorCount(maxPrewarmTime, TimeUnit.MILLISECONDS);
+         } catch (TimeoutException e) {
+           // let's don't fail on future timeout since we have a timeout for pre-warm
+           LOG.warn("Timed out getting executor count.", e);
+@@ -124,9 +126,9 @@ private void createRemoteClient() throws Exception {
+           return;
+         }
+         Thread.sleep(500); // sleep half a second
+-      } while (System.currentTimeMillis() - ts < MAX_PREWARM_TIME);
++      } while (System.currentTimeMillis() - ts < maxPrewarmTime);
+ 
+-      LOG.info("Timeout (" + MAX_PREWARM_TIME / 1000 + "s) occurred while prewarming executors. " +
++      LOG.info("Timeout (" + maxPrewarmTime / 1000 + "s) occurred while prewarming executors. " +
+           "The current number of executors is " + curExecutors);
+     }
+   }
+-- 
+1.7.9.5
+

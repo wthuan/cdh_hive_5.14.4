@@ -1,0 +1,52 @@
+From f80caf58ba1bc74e9698a653b4b00567c76f6904 Mon Sep 17 00:00:00 2001
+From: Rui Li <lirui@apache.org>
+Date: Thu, 25 May 2017 11:00:46 +0800
+Subject: [PATCH 1155/1363] CDH-54420 HIVE-16613: SaslClientHandler.sendHello
+ is eating exceptions (Rui reviewed by Xuefu)
+
+(cherry picked from commit 8a093a7d24705e317a84f0af3fa1e4e5ad941b98)
+
+Change-Id: I3a74f5d93fa4ed0d33e2b661d523fa1e9076bf46
+---
+ .../java/org/apache/hive/spark/client/rpc/Rpc.java |   11 ++++++++++-
+ .../apache/hive/spark/client/rpc/SaslHandler.java  |    2 +-
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/spark-client/src/main/java/org/apache/hive/spark/client/rpc/Rpc.java b/spark-client/src/main/java/org/apache/hive/spark/client/rpc/Rpc.java
+index 5ee58aa..d8e9592 100644
+--- a/spark-client/src/main/java/org/apache/hive/spark/client/rpc/Rpc.java
++++ b/spark-client/src/main/java/org/apache/hive/spark/client/rpc/Rpc.java
+@@ -490,7 +490,16 @@ public void handle(Callback[] callbacks) {
+     void sendHello(Channel c) throws Exception {
+       byte[] hello = client.hasInitialResponse() ?
+         client.evaluateChallenge(new byte[0]) : new byte[0];
+-      c.writeAndFlush(new SaslMessage(clientId, hello));
++      c.writeAndFlush(new SaslMessage(clientId, hello)).addListener(
++          new GenericFutureListener<Future<? super Void>>() {
++        @Override
++        public void operationComplete(Future<? super Void> future) throws Exception {
++          if (!future.isSuccess()) {
++            LOG.error("Failed to send hello to server", future.cause());
++            onError(future.cause());
++          }
++        }
++      });
+     }
+ 
+   }
+diff --git a/spark-client/src/main/java/org/apache/hive/spark/client/rpc/SaslHandler.java b/spark-client/src/main/java/org/apache/hive/spark/client/rpc/SaslHandler.java
+index 26edc63..8a42773 100644
+--- a/spark-client/src/main/java/org/apache/hive/spark/client/rpc/SaslHandler.java
++++ b/spark-client/src/main/java/org/apache/hive/spark/client/rpc/SaslHandler.java
+@@ -36,7 +36,7 @@
+ 
+   // LOG is not static to make debugging easier (being able to identify which sub-class
+   // generated the log message).
+-  private final Logger LOG;
++  protected final Logger LOG;
+   private final boolean requiresEncryption;
+   private KryoMessageCodec kryo;
+   private boolean hasAuthResponse = false;
+-- 
+1.7.9.5
+

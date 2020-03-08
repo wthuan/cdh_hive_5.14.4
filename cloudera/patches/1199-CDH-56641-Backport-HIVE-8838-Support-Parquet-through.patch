@@ -1,0 +1,522 @@
+From d7ab99d7440aba4303358fdc2fc599aa0bb5fc1e Mon Sep 17 00:00:00 2001
+From: Sushanth Sowmyan <khorgath@gmail.com>
+Date: Wed, 12 Jul 2017 11:09:25 -0700
+Subject: [PATCH 1199/1363] =?UTF-8?q?CDH-56641:=20Backport=20HIVE-8838:=20Su?=
+ =?UTF-8?q?pport=20Parquet=20through=20HCatalog=20(Adam=20Szita,=20reviewed=20?=
+ =?UTF-8?q?by=20Sergio=20Pe=C3=B1a,=20Aihua=20Xu=20&=20Sushanth=20Sowmyan)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Change-Id: If38d4ed91602564800284df4842f899026d5e0cd
+---
+ .../mapreduce/FileRecordWriterContainer.java       |    7 +-
+ .../hive/hcatalog/mapreduce/SpecialCases.java      |   27 ++++
+ .../hcatalog/pig/TestHCatLoaderComplexSchema.java  |    3 -
+ .../hive/hcatalog/pig/TestHCatStorerMulti.java     |   10 +-
+ .../hive/hcatalog/pig/TestParquetHCatLoader.java   |   37 -----
+ .../hive/hcatalog/pig/TestParquetHCatStorer.java   |  167 --------------------
+ .../ql/io/parquet/MapredParquetOutputFormat.java   |   11 +-
+ .../ql/io/parquet/serde/ParquetTableUtils.java     |   22 +++
+ .../parquet/write/ParquetRecordWriterWrapper.java  |   25 +++
+ .../io/parquet/TestMapredParquetOutputFormat.java  |   10 --
+ 10 files changed, 89 insertions(+), 230 deletions(-)
+ create mode 100644 ql/src/java/org/apache/hadoop/hive/ql/io/parquet/serde/ParquetTableUtils.java
+
+diff --git a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/FileRecordWriterContainer.java b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/FileRecordWriterContainer.java
+index 2a883d6..2183e70 100644
+--- a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/FileRecordWriterContainer.java
++++ b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/FileRecordWriterContainer.java
+@@ -27,6 +27,7 @@
+ 
+ import org.apache.hadoop.fs.Path;
+ import org.apache.hadoop.hive.conf.HiveConf;
++import org.apache.hadoop.hive.ql.io.parquet.write.ParquetRecordWriterWrapper;
+ import org.apache.hadoop.hive.ql.metadata.HiveStorageHandler;
+ import org.apache.hadoop.hive.serde2.SerDe;
+ import org.apache.hadoop.hive.serde2.SerDeException;
+@@ -117,10 +118,10 @@ public void write(WritableComparable<?> key, HCatRecord value) throws IOExceptio
+       value.remove(colToDel);
+     }
+ 
+-    // The key given by user is ignored
+     try {
+-      localWriter.write(NullWritable.get(),
+-          localSerDe.serialize(value.getAll(), localObjectInspector));
++      // The key given by user is ignored - in case of Parquet we need to supply null
++      Object keyToWrite = localWriter instanceof ParquetRecordWriterWrapper ? null : NullWritable.get();
++      localWriter.write(keyToWrite, localSerDe.serialize(value.getAll(), localObjectInspector));
+     } catch (SerDeException e) {
+       throw new IOException("Failed to serialize object", e);
+     }
+diff --git a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/SpecialCases.java b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/SpecialCases.java
+index c536dd4..7769156 100644
+--- a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/SpecialCases.java
++++ b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/SpecialCases.java
+@@ -24,6 +24,10 @@
+ import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.ql.io.RCFileOutputFormat;
+ import org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat;
++import org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat;
++import org.apache.hadoop.hive.ql.io.parquet.convert.HiveSchemaConverter;
++import org.apache.hadoop.hive.ql.io.parquet.serde.ParquetTableUtils;
++import org.apache.hadoop.hive.ql.io.parquet.write.DataWritableWriteSupport;
+ import org.apache.hadoop.hive.ql.io.orc.OrcFile;
+ import org.apache.hadoop.hive.ql.io.orc.OrcOutputFormat;
+ import org.apache.hadoop.hive.serde2.avro.AvroSerDe;
+@@ -38,6 +42,8 @@
+ import java.util.Map;
+ import java.util.Properties;
+ 
++import com.google.common.collect.Maps;
++
+ /**
+  * This class is a place to put all the code associated with
+  * Special cases. If there is a corner case required to make
+@@ -120,6 +126,27 @@ public static void addSpecialCasesParametersToOutputJobProperties(
+       }
+ 
+ 
++    } else if (ofclass == MapredParquetOutputFormat.class) {
++      //Handle table properties
++      Properties tblProperties = new Properties();
++      Map<String, String> tableProps = jobInfo.getTableInfo().getTable().getParameters();
++      for (String key : tableProps.keySet()) {
++        if (ParquetTableUtils.isParquetProperty(key)) {
++          tblProperties.put(key, tableProps.get(key));
++        }
++      }
++
++      //Handle table schema
++      List<String> colNames = jobInfo.getOutputSchema().getFieldNames();
++      List<TypeInfo> colTypes = new ArrayList<TypeInfo>();
++      for (HCatFieldSchema field : jobInfo.getOutputSchema().getFields()){
++        colTypes.add(TypeInfoUtils.getTypeInfoFromTypeString(field.getTypeString()));
++      }
++      String parquetSchema = HiveSchemaConverter.convert(colNames, colTypes).toString();
++      jobProperties.put(DataWritableWriteSupport.PARQUET_HIVE_SCHEMA, parquetSchema);
++
++      jobProperties.putAll(Maps.fromProperties(tblProperties));
++
+     }
+   }
+ 
+diff --git a/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestHCatLoaderComplexSchema.java b/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestHCatLoaderComplexSchema.java
+index 74aa2b5..95c80cb 100644
+--- a/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestHCatLoaderComplexSchema.java
++++ b/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestHCatLoaderComplexSchema.java
+@@ -76,9 +76,6 @@
+           add("testMapNullKey");
+         }});
+         put(IOConstants.PARQUETFILE, new HashSet<String>() {{
+-          add("testSyntheticComplexSchema");
+-          add("testTupleInBagInTupleInBag");
+-          add("testMapWithComplexData");
+           add("testMapNullKey");
+         }});
+       }};
+diff --git a/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestHCatStorerMulti.java b/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestHCatStorerMulti.java
+index a4e44d6..58c7250 100644
+--- a/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestHCatStorerMulti.java
++++ b/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestHCatStorerMulti.java
+@@ -26,7 +26,6 @@
+ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.HashMap;
+-import java.util.HashSet;
+ import java.util.Map;
+ import java.util.Set;
+ 
+@@ -35,7 +34,6 @@
+ import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.ql.CommandNeedRetryException;
+ import org.apache.hadoop.hive.ql.Driver;
+-import org.apache.hadoop.hive.ql.io.IOConstants;
+ import org.apache.hadoop.hive.ql.io.StorageFormats;
+ import org.apache.hadoop.hive.ql.session.SessionState;
+ 
+@@ -69,13 +67,7 @@
+   private static Map<Integer, Pair<Integer, String>> basicInputData;
+ 
+   private static final Map<String, Set<String>> DISABLED_STORAGE_FORMATS =
+-      new HashMap<String, Set<String>>() {{
+-        put(IOConstants.PARQUETFILE, new HashSet<String>() {{
+-          add("testStoreBasicTable");
+-          add("testStorePartitionedTable");
+-          add("testStoreTableMulti");
+-        }});
+-      }};
++      new HashMap<String, Set<String>>();
+ 
+   private String storageFormat;
+ 
+diff --git a/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestParquetHCatLoader.java b/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestParquetHCatLoader.java
+index 9308a63..a3db682 100644
+--- a/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestParquetHCatLoader.java
++++ b/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestParquetHCatLoader.java
+@@ -18,12 +18,7 @@
+  */
+ package org.apache.hive.hcatalog.pig;
+ 
+-import java.io.IOException;
+-
+-import org.apache.hadoop.hive.ql.CommandNeedRetryException;
+ import org.apache.hadoop.hive.ql.io.IOConstants;
+-import org.junit.Ignore;
+-import org.junit.Test;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+@@ -33,36 +28,4 @@
+   String getStorageFormat() {
+     return IOConstants.PARQUET;
+   }
+-
+-  @Override
+-  @Test
+-  @Ignore("Temporarily disable until fixed")
+-  public void testReadDataBasic() throws IOException {
+-    super.testReadDataBasic();
+-  }
+-
+-  @Override
+-  @Test
+-  @Ignore("Temporarily disable until fixed")
+-  public void testReadPartitionedBasic() throws IOException, CommandNeedRetryException {
+-    super.testReadPartitionedBasic();
+-  }
+-
+-  @Override
+-  @Test
+-  @Ignore("Temporarily disable until fixed")
+-  public void testProjectionsBasic() throws IOException {
+-    super.testProjectionsBasic();
+-  }
+-
+-  /**
+-   * Tests the failure case caused by HIVE-10752
+-   * @throws Exception
+-   */
+-  @Override
+-  @Test
+-  @Ignore("Temporarily disable until fixed")
+-  public void testColumnarStorePushdown2() throws Exception {
+-    super.testColumnarStorePushdown2();
+-  }
+ }
+diff --git a/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestParquetHCatStorer.java b/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestParquetHCatStorer.java
+index 4446998..1f67e21 100644
+--- a/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestParquetHCatStorer.java
++++ b/hcatalog/hcatalog-pig-adapter/src/test/java/org/apache/hive/hcatalog/pig/TestParquetHCatStorer.java
+@@ -18,12 +18,8 @@
+  */
+ package org.apache.hive.hcatalog.pig;
+ 
+-import java.io.IOException;
+ 
+-import org.apache.hadoop.hive.ql.CommandNeedRetryException;
+ import org.apache.hadoop.hive.ql.io.IOConstants;
+-import org.junit.Ignore;
+-import org.junit.Test;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+@@ -34,167 +30,4 @@
+   String getStorageFormat() {
+     return IOConstants.PARQUETFILE;
+   }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testBagNStruct() throws IOException, CommandNeedRetryException {
+-    super.testBagNStruct();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testDateCharTypes() throws Exception {
+-    super.testDateCharTypes();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testDynamicPartitioningMultiPartColsInDataNoSpec() throws IOException,
+-      CommandNeedRetryException {
+-    super.testDynamicPartitioningMultiPartColsInDataNoSpec();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testDynamicPartitioningMultiPartColsInDataPartialSpec() throws IOException,
+-      CommandNeedRetryException {
+-    super.testDynamicPartitioningMultiPartColsInDataPartialSpec();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testMultiPartColsInData() throws IOException, CommandNeedRetryException {
+-    super.testMultiPartColsInData();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testPartColsInData() throws IOException, CommandNeedRetryException {
+-    super.testPartColsInData();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testStoreFuncAllSimpleTypes() throws IOException, CommandNeedRetryException {
+-    super.testStoreFuncAllSimpleTypes();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testStoreFuncSimple() throws IOException, CommandNeedRetryException {
+-    super.testStoreFuncSimple();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testStoreInPartiitonedTbl() throws IOException, CommandNeedRetryException {
+-    super.testStoreInPartiitonedTbl();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testStoreMultiTables() throws IOException, CommandNeedRetryException {
+-    super.testStoreMultiTables();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testStoreWithNoCtorArgs() throws IOException, CommandNeedRetryException {
+-    super.testStoreWithNoCtorArgs();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testStoreWithNoSchema() throws IOException, CommandNeedRetryException {
+-    super.testStoreWithNoSchema();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testWriteChar() throws Exception {
+-    super.testWriteChar();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testWriteDate() throws Exception {
+-    super.testWriteDate();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testWriteDate2() throws Exception {
+-    super.testWriteDate2();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testWriteDate3() throws Exception {
+-    super.testWriteDate3();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testWriteDecimal() throws Exception {
+-    super.testWriteDecimal();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testWriteDecimalX() throws Exception {
+-    super.testWriteDecimalX();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testWriteDecimalXY() throws Exception {
+-    super.testWriteDecimalXY();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testWriteSmallint() throws Exception {
+-    super.testWriteSmallint();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testWriteTimestamp() throws Exception {
+-    super.testWriteTimestamp();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testWriteTinyint() throws Exception {
+-    super.testWriteTinyint();
+-  }
+-
+-  @Test
+-  @Override
+-  @Ignore("Temporarily disable until fixed")
+-  public void testWriteVarchar() throws Exception {
+-    super.testWriteVarchar();
+-  }
+ }
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/MapredParquetOutputFormat.java b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/MapredParquetOutputFormat.java
+index 8380117..264fb9a 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/MapredParquetOutputFormat.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/MapredParquetOutputFormat.java
+@@ -66,6 +66,15 @@ public void checkOutputSpecs(final FileSystem ignored, final JobConf job) throws
+     realOutputFormat.checkOutputSpecs(ShimLoader.getHadoopShims().getHCatShim().createJobContext(job, null));
+   }
+ 
++  /**
++   *
++   * @param ignored Unused parameter
++   * @param job JobConf - expecting mandatory parameter PARQUET_HIVE_SCHEMA
++   * @param name Path to write to
++   * @param progress Progress
++   * @return
++   * @throws IOException
++   */
+   @Override
+   public RecordWriter<Void, ParquetHiveRecord> getRecordWriter(
+       final FileSystem ignored,
+@@ -73,7 +82,7 @@ public void checkOutputSpecs(final FileSystem ignored, final JobConf job) throws
+       final String name,
+       final Progressable progress
+       ) throws IOException {
+-    throw new RuntimeException("Should never be used");
++    return new ParquetRecordWriterWrapper(realOutputFormat, job, name, progress);
+   }
+ 
+   /**
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/serde/ParquetTableUtils.java b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/serde/ParquetTableUtils.java
+new file mode 100644
+index 0000000..cb3b16c
+--- /dev/null
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/serde/ParquetTableUtils.java
+@@ -0,0 +1,22 @@
++/**
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ * http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.hadoop.hive.ql.io.parquet.serde;
++
++public class ParquetTableUtils {
++
++    public static boolean isParquetProperty(String key) {
++        return key.startsWith("parquet.");
++    }
++
++}
+\ No newline at end of file
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/write/ParquetRecordWriterWrapper.java b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/write/ParquetRecordWriterWrapper.java
+index 0d32e49..5bd5a77 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/write/ParquetRecordWriterWrapper.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/write/ParquetRecordWriterWrapper.java
+@@ -14,12 +14,16 @@
+ package org.apache.hadoop.hive.ql.io.parquet.write;
+ 
+ import java.io.IOException;
++import java.util.Iterator;
++import java.util.Map;
+ import java.util.Properties;
+ 
+ import org.apache.commons.logging.Log;
+ import org.apache.commons.logging.LogFactory;
+ import org.apache.hadoop.conf.Configuration;
+ import org.apache.hadoop.fs.Path;
++import org.apache.hadoop.hive.ql.io.parquet.serde.ParquetTableUtils;
++import org.apache.hadoop.io.NullWritable;
+ import org.apache.hadoop.io.Writable;
+ import org.apache.hadoop.mapred.JobConf;
+ import org.apache.hadoop.mapreduce.JobContext;
+@@ -71,6 +75,27 @@ public ParquetRecordWriterWrapper(
+     }
+   }
+ 
++  public ParquetRecordWriterWrapper(
++          final ParquetOutputFormat<ParquetHiveRecord> realOutputFormat,
++          final JobConf jobConf,
++          final String name,
++          final Progressable progress) throws IOException {
++    this(realOutputFormat, jobConf, name, progress, getParquetProperties(jobConf));
++  }
++
++  private static Properties getParquetProperties(JobConf jobConf) {
++    Properties tblProperties = new Properties();
++    Iterator<Map.Entry<String, String>> it = jobConf.iterator();
++    while (it.hasNext()) {
++      Map.Entry<String, String> entry = it.next();
++      if (ParquetTableUtils.isParquetProperty(entry.getKey())) {
++        tblProperties.put(entry.getKey(), entry.getValue());
++      }
++    }
++    return tblProperties;
++  }
++
++
+   private void initializeSerProperties(JobContext job, Properties tableProperties) {
+     String blockSize = tableProperties.getProperty(ParquetOutputFormat.BLOCK_SIZE);
+     Configuration conf = ContextUtil.getConfiguration(job);
+diff --git a/ql/src/test/org/apache/hadoop/hive/ql/io/parquet/TestMapredParquetOutputFormat.java b/ql/src/test/org/apache/hadoop/hive/ql/io/parquet/TestMapredParquetOutputFormat.java
+index e93aa9a..74ae24c 100644
+--- a/ql/src/test/org/apache/hadoop/hive/ql/io/parquet/TestMapredParquetOutputFormat.java
++++ b/ql/src/test/org/apache/hadoop/hive/ql/io/parquet/TestMapredParquetOutputFormat.java
+@@ -44,16 +44,6 @@ public void testConstructorWithFormat() {
+     new MapredParquetOutputFormat((ParquetOutputFormat<ParquetHiveRecord>) mock(ParquetOutputFormat.class));
+   }
+ 
+-  @Test
+-  public void testGetRecordWriterThrowsException() {
+-    try {
+-      new MapredParquetOutputFormat().getRecordWriter(null, null, null, null);
+-      fail("should throw runtime exception.");
+-    } catch (Exception e) {
+-      assertEquals("Should never be used", e.getMessage());
+-    }
+-  }
+-
+   @SuppressWarnings("unchecked")
+   @Test
+   public void testGetHiveRecordWriter() throws IOException {
+-- 
+1.7.9.5
+

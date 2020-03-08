@@ -1,0 +1,68 @@
+From 28ab166f8a3f16ace4f8b099ca766a0905b100d8 Mon Sep 17 00:00:00 2001
+From: Jimmy Xiang <jxiang@apache.org>
+Date: Tue, 15 Nov 2016 09:41:24 -0800
+Subject: [PATCH 1244/1363] CDH-58029: HIVE-15208: Query string should be HTML
+ encoded for Web UI (Jimmy Xiang, reviewed by
+ Xuefu Zhang)
+
+(cherry picked from commit 5aff550b96f50bd65a37756ec19d66e0c8a8eceb)
+
+Change-Id: I0d7ad1245cb6c274ca4b503726061eb1dc83bafa
+---
+ .../org/apache/hive/tmpl/QueryProfileTmpl.jamon    |    4 ++--
+ .../hive-webapps/hiveserver2/hiveserver2.jsp       |    5 +++--
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/service/src/jamon/org/apache/hive/tmpl/QueryProfileTmpl.jamon b/service/src/jamon/org/apache/hive/tmpl/QueryProfileTmpl.jamon
+index ec23975..cbd2f8b 100644
+--- a/service/src/jamon/org/apache/hive/tmpl/QueryProfileTmpl.jamon
++++ b/service/src/jamon/org/apache/hive/tmpl/QueryProfileTmpl.jamon
+@@ -160,7 +160,7 @@ org.apache.hadoop.hive.ql.QueryInfo;
+         </%if>
+         <tr>
+             <td>Latency (s)</td>
+-            <td><% queryInfo.getRuntime()/1000 %></td>
++            <td><% queryInfo.getRuntime() == null ? "Not finished" : queryInfo.getRuntime()/1000 %></td>
+         </tr>
+     </table>
+ </%def>
+@@ -299,4 +299,4 @@ org.apache.hadoop.hive.ql.QueryInfo;
+ <script src="/static/js/bootstrap.min.js" type="text/javascript"></script>
+ <script src="/static/js/tab.js" type="text/javascript"></script>
+ </body>
+-</html>
+\ No newline at end of file
++</html>
+diff --git a/service/src/resources/hive-webapps/hiveserver2/hiveserver2.jsp b/service/src/resources/hive-webapps/hiveserver2/hiveserver2.jsp
+index 1555e6b..51e88dc 100644
+--- a/service/src/resources/hive-webapps/hiveserver2/hiveserver2.jsp
++++ b/service/src/resources/hive-webapps/hiveserver2/hiveserver2.jsp
+@@ -31,6 +31,7 @@
+   import="java.util.Collection"
+   import="java.util.Date"
+   import="java.util.List"
++  import="jodd.util.HtmlEncoder"
+ %>
+ 
+ <%
+@@ -145,7 +146,7 @@ for (HiveSession hiveSession: hiveSessions) {
+     %>
+     <tr>
+         <td><%= operation.getUserName() %></td>
+-        <td><%= operation.getQueryDisplay() == null ? "Unknown" : operation.getQueryDisplay().getQueryString() %></td>
++        <td><%= HtmlEncoder.strict(operation.getQueryDisplay() == null ? "Unknown" : operation.getQueryDisplay().getQueryString()) %></td>
+         <td><%= operation.getExecutionEngine() %>
+         <td><%= operation.getState() %></td>
+         <td><%= new Date(operation.getBeginTime()) %></td>
+@@ -186,7 +187,7 @@ for (HiveSession hiveSession: hiveSessions) {
+     %>
+     <tr>
+         <td><%= operation.getUserName() %></td>
+-        <td><%= operation.getQueryDisplay() == null ? "Unknown" : operation.getQueryDisplay().getQueryString() %></td>
++        <td><%= HtmlEncoder.strict(operation.getQueryDisplay() == null ? "Unknown" : operation.getQueryDisplay().getQueryString()) %></td>
+         <td><%= operation.getExecutionEngine() %>
+         <td><%= operation.getState() %></td>
+         <td><%= operation.getElapsedTime()/1000 %></td>
+-- 
+1.7.9.5
+

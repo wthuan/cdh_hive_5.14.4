@@ -1,0 +1,44 @@
+From c7964579a5e68880385310c6023d8bf8270b6442 Mon Sep 17 00:00:00 2001
+From: Naveen Gangam <ngangam@apache.org>
+Date: Tue, 28 Mar 2017 14:19:26 -0400
+Subject: [PATCH 1301/1363] CDH-60444 HIVE-16007 LogRunnable never stops when
+ fails to compile. (Peter Vary, Reviewed by Sergey
+ Shelukhin, anishek, Naveen Gangam)
+
+(cherry picked from commit 69f1cd4f3a74485a1c0d4fb4c7fb1e713209d432)
+
+Change-Id: Ibf91084bbaf1f181c97bcf010c17709fee66e966
+---
+ .../java/org/apache/hive/jdbc/HiveStatement.java   |    6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/jdbc/src/java/org/apache/hive/jdbc/HiveStatement.java b/jdbc/src/java/org/apache/hive/jdbc/HiveStatement.java
+index 5997961..3a75899 100644
+--- a/jdbc/src/java/org/apache/hive/jdbc/HiveStatement.java
++++ b/jdbc/src/java/org/apache/hive/jdbc/HiveStatement.java
+@@ -257,9 +257,11 @@ public boolean execute(String sql) throws SQLException {
+       isExecuteStatementFailed = false;
+     } catch (SQLException eS) {
+       isExecuteStatementFailed = true;
++      isLogBeingGenerated = false;
+       throw eS;
+     } catch (Exception ex) {
+       isExecuteStatementFailed = true;
++      isLogBeingGenerated = false;
+       throw new SQLException(ex.toString(), "08S01", ex);
+     }
+ 
+@@ -819,10 +821,6 @@ public boolean hasMoreLogs() {
+         if (isQueryClosed) {
+           throw new ClosedOrCancelledStatementException("Method getQueryLog() failed. The " +
+               "statement has been closed or cancelled.");
+-        }
+-        if (isExecuteStatementFailed) {
+-          throw new SQLException("Method getQueryLog() failed. Because the stmtHandle in " +
+-              "HiveStatement is null and the statement execution might fail.");
+         } else {
+           return logs;
+         }
+-- 
+1.7.9.5
+

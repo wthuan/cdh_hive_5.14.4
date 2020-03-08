@@ -1,0 +1,314 @@
+From b5a7c47f43557eafb69b731472b5fb1bad8f6932 Mon Sep 17 00:00:00 2001
+From: Marta Kuczora <kuczoram@cloudera.com>
+Date: Tue, 15 Aug 2017 10:18:59 +0200
+Subject: [PATCH 1243/1363] CDH-57844 HIVE-6727 : Table level stats for
+ external tables are set incorrectly (Bing Li via
+ Ashutosh Chauhan) (addendum) The golden files for
+ some blobstore tests had to be regenerated due to
+ the changes in the statistics.
+
+Change-Id: I82c9af6552021cdc0898f346c92a03c8b8fc6d1d
+---
+ .../results/clientpositive/insert_into_table.q.out |   36 ++++++++++----------
+ .../clientpositive/insert_overwrite_table.q.out    |   36 ++++++++++----------
+ 2 files changed, 36 insertions(+), 36 deletions(-)
+
+diff --git a/itests/hive-blobstore/src/test/results/clientpositive/insert_into_table.q.out b/itests/hive-blobstore/src/test/results/clientpositive/insert_into_table.q.out
+index ec5e0f9..acbdb47 100644
+--- a/itests/hive-blobstore/src/test/results/clientpositive/insert_into_table.q.out
++++ b/itests/hive-blobstore/src/test/results/clientpositive/insert_into_table.q.out
+@@ -96,13 +96,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                       location ### test.blobstore.path ###/table1
+                       name default.table1
+-                      numFiles 0
++                      numFiles 2
+                       numRows 2
+                       rawDataSize 2
+                       serialization.ddl struct table1 { i32 id}
+                       serialization.format 1
+                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                      totalSize 0
++                      totalSize 4
+ #### A masked pattern was here ####
+                     serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                     name: default.table1
+@@ -167,13 +167,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                 location ### test.blobstore.path ###/table1
+                 name default.table1
+-                numFiles 0
++                numFiles 2
+                 numRows 2
+                 rawDataSize 2
+                 serialization.ddl struct table1 { i32 id}
+                 serialization.format 1
+                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                totalSize 0
++                totalSize 4
+ #### A masked pattern was here ####
+               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+               name: default.table1
+@@ -204,13 +204,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                     location ### test.blobstore.path ###/table1
+                     name default.table1
+-                    numFiles 0
++                    numFiles 2
+                     numRows 2
+                     rawDataSize 2
+                     serialization.ddl struct table1 { i32 id}
+                     serialization.format 1
+                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                    totalSize 0
++                    totalSize 4
+ #### A masked pattern was here ####
+                   serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                   name: default.table1
+@@ -234,13 +234,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+               location ### test.blobstore.path ###/table1
+               name default.table1
+-              numFiles 0
++              numFiles 2
+               numRows 2
+               rawDataSize 2
+               serialization.ddl struct table1 { i32 id}
+               serialization.format 1
+               serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-              totalSize 0
++              totalSize 4
+ #### A masked pattern was here ####
+             serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+           
+@@ -255,13 +255,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                 location ### test.blobstore.path ###/table1
+                 name default.table1
+-                numFiles 0
++                numFiles 2
+                 numRows 2
+                 rawDataSize 2
+                 serialization.ddl struct table1 { i32 id}
+                 serialization.format 1
+                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                totalSize 0
++                totalSize 4
+ #### A masked pattern was here ####
+               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+               name: default.table1
+@@ -286,13 +286,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                 location ### test.blobstore.path ###/table1
+                 name default.table1
+-                numFiles 0
++                numFiles 2
+                 numRows 2
+                 rawDataSize 2
+                 serialization.ddl struct table1 { i32 id}
+                 serialization.format 1
+                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                totalSize 0
++                totalSize 4
+ #### A masked pattern was here ####
+               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+               name: default.table1
+@@ -319,13 +319,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                     location ### test.blobstore.path ###/table1
+                     name default.table1
+-                    numFiles 0
++                    numFiles 2
+                     numRows 2
+                     rawDataSize 2
+                     serialization.ddl struct table1 { i32 id}
+                     serialization.format 1
+                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                    totalSize 0
++                    totalSize 4
+ #### A masked pattern was here ####
+                   serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                   name: default.table1
+@@ -349,13 +349,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+               location ### test.blobstore.path ###/table1
+               name default.table1
+-              numFiles 0
++              numFiles 2
+               numRows 2
+               rawDataSize 2
+               serialization.ddl struct table1 { i32 id}
+               serialization.format 1
+               serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-              totalSize 0
++              totalSize 4
+ #### A masked pattern was here ####
+             serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+           
+@@ -370,13 +370,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                 location ### test.blobstore.path ###/table1
+                 name default.table1
+-                numFiles 0
++                numFiles 2
+                 numRows 2
+                 rawDataSize 2
+                 serialization.ddl struct table1 { i32 id}
+                 serialization.format 1
+                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                totalSize 0
++                totalSize 4
+ #### A masked pattern was here ####
+               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+               name: default.table1
+diff --git a/itests/hive-blobstore/src/test/results/clientpositive/insert_overwrite_table.q.out b/itests/hive-blobstore/src/test/results/clientpositive/insert_overwrite_table.q.out
+index a7528d5..cb333e4 100644
+--- a/itests/hive-blobstore/src/test/results/clientpositive/insert_overwrite_table.q.out
++++ b/itests/hive-blobstore/src/test/results/clientpositive/insert_overwrite_table.q.out
+@@ -104,13 +104,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                       location ### test.blobstore.path ###/table1
+                       name default.table1
+-                      numFiles 0
++                      numFiles 1
+                       numRows 1
+                       rawDataSize 1
+                       serialization.ddl struct table1 { i32 id}
+                       serialization.format 1
+                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                      totalSize 0
++                      totalSize 2
+ #### A masked pattern was here ####
+                     serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                     name: default.table1
+@@ -175,13 +175,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                 location ### test.blobstore.path ###/table1
+                 name default.table1
+-                numFiles 0
++                numFiles 1
+                 numRows 1
+                 rawDataSize 1
+                 serialization.ddl struct table1 { i32 id}
+                 serialization.format 1
+                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                totalSize 0
++                totalSize 2
+ #### A masked pattern was here ####
+               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+               name: default.table1
+@@ -212,13 +212,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                     location ### test.blobstore.path ###/table1
+                     name default.table1
+-                    numFiles 0
++                    numFiles 1
+                     numRows 1
+                     rawDataSize 1
+                     serialization.ddl struct table1 { i32 id}
+                     serialization.format 1
+                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                    totalSize 0
++                    totalSize 2
+ #### A masked pattern was here ####
+                   serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                   name: default.table1
+@@ -242,13 +242,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+               location ### test.blobstore.path ###/table1
+               name default.table1
+-              numFiles 0
++              numFiles 1
+               numRows 1
+               rawDataSize 1
+               serialization.ddl struct table1 { i32 id}
+               serialization.format 1
+               serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-              totalSize 0
++              totalSize 2
+ #### A masked pattern was here ####
+             serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+           
+@@ -263,13 +263,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                 location ### test.blobstore.path ###/table1
+                 name default.table1
+-                numFiles 0
++                numFiles 1
+                 numRows 1
+                 rawDataSize 1
+                 serialization.ddl struct table1 { i32 id}
+                 serialization.format 1
+                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                totalSize 0
++                totalSize 2
+ #### A masked pattern was here ####
+               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+               name: default.table1
+@@ -294,13 +294,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                 location ### test.blobstore.path ###/table1
+                 name default.table1
+-                numFiles 0
++                numFiles 1
+                 numRows 1
+                 rawDataSize 1
+                 serialization.ddl struct table1 { i32 id}
+                 serialization.format 1
+                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                totalSize 0
++                totalSize 2
+ #### A masked pattern was here ####
+               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+               name: default.table1
+@@ -327,13 +327,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                     location ### test.blobstore.path ###/table1
+                     name default.table1
+-                    numFiles 0
++                    numFiles 1
+                     numRows 1
+                     rawDataSize 1
+                     serialization.ddl struct table1 { i32 id}
+                     serialization.format 1
+                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                    totalSize 0
++                    totalSize 2
+ #### A masked pattern was here ####
+                   serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                   name: default.table1
+@@ -357,13 +357,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+               location ### test.blobstore.path ###/table1
+               name default.table1
+-              numFiles 0
++              numFiles 1
+               numRows 1
+               rawDataSize 1
+               serialization.ddl struct table1 { i32 id}
+               serialization.format 1
+               serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-              totalSize 0
++              totalSize 2
+ #### A masked pattern was here ####
+             serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+           
+@@ -378,13 +378,13 @@ STAGE PLANS:
+ #### A masked pattern was here ####
+                 location ### test.blobstore.path ###/table1
+                 name default.table1
+-                numFiles 0
++                numFiles 1
+                 numRows 1
+                 rawDataSize 1
+                 serialization.ddl struct table1 { i32 id}
+                 serialization.format 1
+                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+-                totalSize 0
++                totalSize 2
+ #### A masked pattern was here ####
+               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+               name: default.table1
+-- 
+1.7.9.5
+

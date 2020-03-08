@@ -1,0 +1,26 @@
+From f43f70193f110b01ebd03a6f8760680c5aa4a276 Mon Sep 17 00:00:00 2001
+From: stakiar <stakiar@cloudera.com>
+Date: Wed, 12 Jul 2017 12:54:59 -0700
+Subject: [PATCH 1193/1363] CLOUDERA-BUILD: CDH-56420: spark.only.query.files
+ aren't run in the HoS qtests harness
+
+Change-Id: I28c12a9606f88109f51c29f2ae6511187f4b8e63
+---
+ .../apache/hadoop/hive/cli/control/CliConfigs.java |    1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/itests/util/src/main/java/org/apache/hadoop/hive/cli/control/CliConfigs.java b/itests/util/src/main/java/org/apache/hadoop/hive/cli/control/CliConfigs.java
+index 1c58462..af8ce42 100644
+--- a/itests/util/src/main/java/org/apache/hadoop/hive/cli/control/CliConfigs.java
++++ b/itests/util/src/main/java/org/apache/hadoop/hive/cli/control/CliConfigs.java
+@@ -423,6 +423,7 @@ public SparkOnYarnCliConfig() {
+         setQueryDir("ql/src/test/queries/clientpositive");
+ 
+         includesFrom(testConfigProps, "miniSparkOnYarn.query.files");
++        includesFrom(testConfigProps, "spark.only.query.files");
+ 
+         setResultsDir("ql/src/test/results/clientpositive/spark");
+         setLogDir("itests/qtest-spark/target/qfile-results/clientpositive/spark");
+-- 
+1.7.9.5
+

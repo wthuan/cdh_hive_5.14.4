@@ -1,0 +1,31 @@
+From 64ea387a68b440124f399d20c702cf74bb4f293f Mon Sep 17 00:00:00 2001
+From: Marta Kuczora <kuczoram@cloudera.com>
+Date: Fri, 3 Nov 2017 13:14:22 +0100
+Subject: [PATCH 1314/1363] CLOUDERA-BUILD: CDH-53833 : Temporarily switch off
+ the blobstore optimization for the S3 tests We
+ have many flaky tests since the blobstore
+ optimization is on. Temporarily switch it off to
+ see if the flakyness is related to the
+ optimization or not.
+
+Change-Id: I8060a86c63bb5f619d32dc470781662d95eb692a
+---
+ .../test/resources/hdfs-blobstore/hive-site.xml    |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/itests/hive-blobstore/src/test/resources/hdfs-blobstore/hive-site.xml b/itests/hive-blobstore/src/test/resources/hdfs-blobstore/hive-site.xml
+index 4f1e098..d9384ca 100644
+--- a/itests/hive-blobstore/src/test/resources/hdfs-blobstore/hive-site.xml
++++ b/itests/hive-blobstore/src/test/resources/hdfs-blobstore/hive-site.xml
+@@ -38,7 +38,7 @@
+ 
+   <property>
+     <name>hive.blobstore.optimizations.enabled</name>
+-    <value>true</value>
++    <value>false</value>
+   </property>
+ 
+   <!-- Hive Configuration can either be stored in this file or in the hadoop configuration files  -->
+-- 
+1.7.9.5
+

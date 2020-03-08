@@ -1,0 +1,46 @@
+From 9a33250fe3252992733243b8ff4f1f22082bab19 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Fri, 28 Jul 2017 10:44:26 +0200
+Subject: [PATCH 1246/1363] CDH-58027: HIVE-16982: WebUI "Show Query" tab
+ prints "UNKNOWN" instead of explaining
+ configuration option (Karen Coppage via Peter
+ Vary)
+
+(cherry picked from commit 52a64f14d5ac8c82e964ebfe64c362a7cd5ac25b)
+
+Change-Id: Id22dff0ff2fe8b1bf0616173c8863772336cdd17
+---
+ .../java/org/apache/hadoop/hive/conf/HiveConf.java |    3 ++-
+ .../org/apache/hadoop/hive/ql/QueryDisplay.java    |    2 +-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java b/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+index 973646c..aa2e7c0 100644
+--- a/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
++++ b/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+@@ -1665,7 +1665,8 @@ public void setSparkConfigUpdated(boolean isSparkConfigUpdated) {
+ 
+     HIVE_LOG_EXPLAIN_OUTPUT("hive.log.explain.output", false,
+         "Whether to log explain output for every query.\n" +
+-        "When enabled, will log EXPLAIN EXTENDED output for the query at INFO log4j log level."),
++        "When enabled, will log EXPLAIN EXTENDED output for the query at INFO log4j log level\n" +
++        "and in WebUI / Drilldown / Show Query."),
+ 
+     // prefix used to auto generated column aliases (this should be started with '_')
+     HIVE_AUTOGEN_COLUMNALIAS_PREFIX_LABEL("hive.autogen.columnalias.prefix.label", "_c",
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/QueryDisplay.java b/ql/src/java/org/apache/hadoop/hive/ql/QueryDisplay.java
+index 467dab6..338366c 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/QueryDisplay.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/QueryDisplay.java
+@@ -189,7 +189,7 @@ public synchronized String getQueryString() {
+   }
+ 
+   public synchronized String getExplainPlan() {
+-    return returnStringOrUnknown(explainPlan);
++    return explainPlan == null ? "SET hive.log.explain.output TO true TO VIEW PLANS" : explainPlan;
+   }
+ 
+   public synchronized void setExplainPlan(String explainPlan) {
+-- 
+1.7.9.5
+

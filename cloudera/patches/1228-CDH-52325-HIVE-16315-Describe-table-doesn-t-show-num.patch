@@ -1,0 +1,27 @@
+From b41eef24acb6c52787b59a7fd4751e4a3af4bfc9 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Tue, 1 Aug 2017 10:31:31 +0200
+Subject: [PATCH 1228/1363] CDH-52325 : HIVE-16315 : Describe table doesn't
+ show num of partitions             Addendum for
+ beeline tests
+
+Change-Id: I2a4116885d68ab09bfc1e907b4f84c15074256a5
+---
+ .../clientpositive/beeline/escape_comments.q.out   |    1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ql/src/test/results/clientpositive/beeline/escape_comments.q.out b/ql/src/test/results/clientpositive/beeline/escape_comments.q.out
+index b6838de..f04692d 100644
+--- a/ql/src/test/results/clientpositive/beeline/escape_comments.q.out
++++ b/ql/src/test/results/clientpositive/beeline/escape_comments.q.out
+@@ -104,6 +104,7 @@ Retention:          	0                   	NULL
+ Table Type:         	MANAGED_TABLE       	NULL
+ Table Parameters:	NULL	NULL
+ 	comment             	a\nb                
++	numPartitions       	0                   
+ #### A masked pattern was here ####
+ 	NULL	NULL
+ # Storage Information	NULL	NULL
+-- 
+1.7.9.5
+

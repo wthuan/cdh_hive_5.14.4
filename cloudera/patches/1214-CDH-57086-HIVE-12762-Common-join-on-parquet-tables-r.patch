@@ -1,0 +1,317 @@
+From 650e907080e7fa3d875616a6b12bae0564f03145 Mon Sep 17 00:00:00 2001
+From: Aihua Xu <aihuaxu@apache.org>
+Date: Wed, 30 Dec 2015 19:32:33 -0500
+Subject: [PATCH 1214/1363] CDH-57086: HIVE-12762: Common join on parquet
+ tables returns incorrect result when
+ hive.optimize.index.filter set to true (reviewed
+ by Sergio Pena)
+
+Conflicts:
+	ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
+	storage-api/src/java/org/apache/hadoop/hive/ql/io/sarg/ExpressionTree.java
+	storage-api/src/java/org/apache/hadoop/hive/ql/io/sarg/SearchArgumentImpl.java
+
+Change-Id: I147c672b530455a94b3dbb5c19ecc559bdb11fe7
+---
+ .../org/apache/hadoop/hive/ql/exec/Utilities.java  |   29 +++++--
+ .../hive/ql/io/parquet/ProjectionPusher.java       |   87 ++++++++++++++------
+ ql/src/test/queries/clientpositive/parquet_join2.q |   14 ++++
+ .../results/clientpositive/parquet_join2.q.out     |   55 +++++++++++++
+ 4 files changed, 152 insertions(+), 33 deletions(-)
+ create mode 100644 ql/src/test/queries/clientpositive/parquet_join2.q
+ create mode 100644 ql/src/test/results/clientpositive/parquet_join2.q.out
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
+index 05afde3..d6a9741 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java
+@@ -3069,12 +3069,11 @@ public static String join(String... elements) {
+     return builder.toString();
+   }
+ 
+-  public static void setColumnNameList(JobConf jobConf, Operator op) {
+-    setColumnNameList(jobConf, op, false);
++  public static void setColumnNameList(JobConf jobConf, RowSchema rowSchema) {
++    setColumnNameList(jobConf, rowSchema, false);
+   }
+ 
+-  public static void setColumnNameList(JobConf jobConf, Operator op, boolean excludeVCs) {
+-    RowSchema rowSchema = op.getSchema();
++  public static void setColumnNameList(JobConf jobConf, RowSchema rowSchema, boolean excludeVCs) {
+     if (rowSchema == null) {
+       return;
+     }
+@@ -3092,12 +3091,20 @@ public static void setColumnNameList(JobConf jobConf, Operator op, boolean exclu
+     jobConf.set(serdeConstants.LIST_COLUMNS, columnNamesString);
+   }
+ 
+-  public static void setColumnTypeList(JobConf jobConf, Operator op) {
+-    setColumnTypeList(jobConf, op, false);
++  public static void setColumnNameList(JobConf jobConf, Operator op) {
++    setColumnNameList(jobConf, op, false);
+   }
+ 
+-  public static void setColumnTypeList(JobConf jobConf, Operator op, boolean excludeVCs) {
++  public static void setColumnNameList(JobConf jobConf, Operator op, boolean excludeVCs) {
+     RowSchema rowSchema = op.getSchema();
++    setColumnNameList(jobConf, rowSchema, excludeVCs);
++  }
++
++  public static void setColumnTypeList(JobConf jobConf, RowSchema rowSchema) {
++    setColumnTypeList(jobConf, rowSchema, false);
++  }
++
++  public static void setColumnTypeList(JobConf jobConf, RowSchema rowSchema, boolean excludeVCs) {
+     if (rowSchema == null) {
+       return;
+     }
+@@ -3116,6 +3123,14 @@ public static void setColumnTypeList(JobConf jobConf, Operator op, boolean exclu
+   }
+ 
+   public static final String suffix = ".hashtable";
++  public static void setColumnTypeList(JobConf jobConf, Operator op) {
++    setColumnTypeList(jobConf, op, false);
++  }
++
++  public static void setColumnTypeList(JobConf jobConf, Operator op, boolean excludeVCs) {
++    RowSchema rowSchema = op.getSchema();
++    setColumnTypeList(jobConf, rowSchema, excludeVCs);
++  }
+ 
+   public static Path generatePath(Path basePath, String dumpFilePrefix,
+       Byte tag, String bigBucketFileName) {
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/ProjectionPusher.java b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/ProjectionPusher.java
+index 4480600..f0592ee 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/ProjectionPusher.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/ProjectionPusher.java
+@@ -16,23 +16,30 @@
+ import java.io.IOException;
+ import java.io.Serializable;
+ import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.HashSet;
+ import java.util.Iterator;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Map.Entry;
++import java.util.Set;
+ 
+ import org.apache.commons.logging.Log;
+ import org.apache.commons.logging.LogFactory;
+ import org.apache.hadoop.fs.Path;
+ import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.ql.exec.Operator;
++import org.apache.hadoop.hive.ql.exec.RowSchema;
+ import org.apache.hadoop.hive.ql.exec.TableScanOperator;
++import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
+ import org.apache.hadoop.hive.ql.exec.Utilities;
++import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
+ import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
+ import org.apache.hadoop.hive.ql.plan.MapWork;
+ import org.apache.hadoop.hive.ql.plan.PartitionDesc;
+ import org.apache.hadoop.hive.ql.plan.TableScanDesc;
++import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPOr;
+ import org.apache.hadoop.hive.serde2.ColumnProjectionUtils;
+ import org.apache.hadoop.mapred.JobConf;
+ 
+@@ -66,7 +73,8 @@ private void updateMrWork(final JobConf job) {
+   }
+ 
+   private void pushProjectionsAndFilters(final JobConf jobConf,
+-      final String splitPath, final String splitPathWithNoSchema) {
++      final String splitPath,
++      final String splitPathWithNoSchema) {
+ 
+     if (mapWork == null) {
+       return;
+@@ -74,53 +82,80 @@ private void pushProjectionsAndFilters(final JobConf jobConf,
+       return;
+     }
+ 
+-    final ArrayList<String> aliases = new ArrayList<String>();
+-    final Iterator<Entry<String, ArrayList<String>>> iterator = mapWork.getPathToAliases().entrySet().iterator();
++    final Set<String> aliases = new HashSet<String>();
++    final Iterator<Entry<String, ArrayList<String>>> iterator =
++        mapWork.getPathToAliases().entrySet().iterator();
+ 
+     while (iterator.hasNext()) {
+       final Entry<String, ArrayList<String>> entry = iterator.next();
+       final String key = new Path(entry.getKey()).toUri().getPath();
+       if (splitPath.equals(key) || splitPathWithNoSchema.equals(key)) {
+-        final ArrayList<String> list = entry.getValue();
+-        for (final String val : list) {
+-          aliases.add(val);
+-        }
++        aliases.addAll(entry.getValue());
+       }
+     }
+ 
+-    for (final String alias : aliases) {
+-      final Operator<? extends Serializable> op = mapWork.getAliasToWork().get(
+-          alias);
++    // Collect the needed columns from all the aliases and create ORed filter
++    // expression for the table.
++    boolean allColumnsNeeded = false;
++    boolean noFilters = false;
++    Set<Integer> neededColumnIDs = new HashSet<Integer>();
++    List<ExprNodeGenericFuncDesc> filterExprs = new ArrayList<ExprNodeGenericFuncDesc>();
++    RowSchema rowSchema = null;
++
++    for(String alias : aliases) {
++      final Operator<? extends Serializable> op =
++          mapWork.getAliasToWork().get(alias);
+       if (op != null && op instanceof TableScanOperator) {
+-        final TableScanOperator tableScan = (TableScanOperator) op;
+-
+-        // push down projections
+-        final List<Integer> list = tableScan.getNeededColumnIDs();
++        final TableScanOperator ts = (TableScanOperator) op;
+ 
+-        if (list != null) {
+-          ColumnProjectionUtils.appendReadColumnIDs(jobConf, list);
++        if (ts.getNeededColumnIDs() == null) {
++          allColumnsNeeded = true;
+         } else {
+-          ColumnProjectionUtils.setFullyReadColumns(jobConf);
++          neededColumnIDs.addAll(ts.getNeededColumnIDs());
+         }
+ 
+-        pushFilters(jobConf, tableScan);
++        rowSchema = ts.getSchema();
++        ExprNodeGenericFuncDesc filterExpr =
++            ts.getConf() == null ? null : ts.getConf().getFilterExpr();
++        noFilters = (filterExpr == null) || noFilters; // No filter if any TS has no filter expression
++        filterExprs.add(filterExpr);
+       }
+     }
+-  }
+ 
+-  private void pushFilters(final JobConf jobConf, final TableScanOperator tableScan) {
++    ExprNodeGenericFuncDesc tableFilterExpr = null;
++    if (!noFilters) {
++      try {
++        for (ExprNodeGenericFuncDesc filterExpr : filterExprs) {
++          if (tableFilterExpr == null ) {
++            tableFilterExpr = filterExpr;
++          } else {
++            tableFilterExpr = ExprNodeGenericFuncDesc.newInstance(new GenericUDFOPOr(),
++                Arrays.<ExprNodeDesc>asList(tableFilterExpr, filterExpr));
++          }
++        }
++      } catch(UDFArgumentException ex) {
++        LOG.debug("Turn off filtering due to " + ex);
++        tableFilterExpr = null;
++      }
++    }
+ 
+-    final TableScanDesc scanDesc = tableScan.getConf();
+-    if (scanDesc == null) {
+-      LOG.debug("Not pushing filters because TableScanDesc is null");
+-      return;
++    // push down projections
++    if (!allColumnsNeeded) {
++      if (!neededColumnIDs.isEmpty()) {
++        ColumnProjectionUtils.appendReadColumnIDs(jobConf, new ArrayList<Integer>(neededColumnIDs));
++      }
++    } else {
++      ColumnProjectionUtils.setFullyReadColumns(jobConf);
+     }
+ 
++    pushFilters(jobConf, rowSchema, tableFilterExpr);
++  }
++
++  private void pushFilters(final JobConf jobConf, RowSchema rowSchema, ExprNodeGenericFuncDesc filterExpr) {
+     // construct column name list for reference by filter push down
+-    Utilities.setColumnNameList(jobConf, tableScan);
++    Utilities.setColumnNameList(jobConf, rowSchema);
+ 
+     // push down filters
+-    final ExprNodeGenericFuncDesc filterExpr = scanDesc.getFilterExpr();
+     if (filterExpr == null) {
+       LOG.debug("Not pushing filters because FilterExpr is null");
+       return;
+diff --git a/ql/src/test/queries/clientpositive/parquet_join2.q b/ql/src/test/queries/clientpositive/parquet_join2.q
+new file mode 100644
+index 0000000..9d107c7
+--- /dev/null
++++ b/ql/src/test/queries/clientpositive/parquet_join2.q
+@@ -0,0 +1,14 @@
++set hive.optimize.index.filter = true;
++set hive.auto.convert.join=false;
++
++CREATE TABLE tbl1(id INT) STORED AS PARQUET;
++INSERT INTO tbl1 VALUES(1), (2);
++
++CREATE TABLE tbl2(id INT, value STRING) STORED AS PARQUET;
++INSERT INTO tbl2 VALUES(1, 'value1');
++INSERT INTO tbl2 VALUES(1, 'value2');
++
++select tbl1.id, t1.value, t2.value
++FROM tbl1
++JOIN (SELECT * FROM tbl2 WHERE value='value1') t1 ON tbl1.id=t1.id
++JOIN (SELECT * FROM tbl2 WHERE value='value2') t2 ON tbl1.id=t2.id;
+diff --git a/ql/src/test/results/clientpositive/parquet_join2.q.out b/ql/src/test/results/clientpositive/parquet_join2.q.out
+new file mode 100644
+index 0000000..c2bc786
+--- /dev/null
++++ b/ql/src/test/results/clientpositive/parquet_join2.q.out
+@@ -0,0 +1,55 @@
++PREHOOK: query: CREATE TABLE tbl1(id INT) STORED AS PARQUET
++PREHOOK: type: CREATETABLE
++PREHOOK: Output: database:default
++PREHOOK: Output: default@tbl1
++POSTHOOK: query: CREATE TABLE tbl1(id INT) STORED AS PARQUET
++POSTHOOK: type: CREATETABLE
++POSTHOOK: Output: database:default
++POSTHOOK: Output: default@tbl1
++PREHOOK: query: INSERT INTO tbl1 VALUES(1), (2)
++PREHOOK: type: QUERY
++PREHOOK: Output: default@tbl1
++POSTHOOK: query: INSERT INTO tbl1 VALUES(1), (2)
++POSTHOOK: type: QUERY
++POSTHOOK: Output: default@tbl1
++POSTHOOK: Lineage: tbl1.id EXPRESSION [(values__tmp__table__1)values__tmp__table__1.FieldSchema(name:tmp_values_col1, type:string, comment:), ]
++PREHOOK: query: CREATE TABLE tbl2(id INT, value STRING) STORED AS PARQUET
++PREHOOK: type: CREATETABLE
++PREHOOK: Output: database:default
++PREHOOK: Output: default@tbl2
++POSTHOOK: query: CREATE TABLE tbl2(id INT, value STRING) STORED AS PARQUET
++POSTHOOK: type: CREATETABLE
++POSTHOOK: Output: database:default
++POSTHOOK: Output: default@tbl2
++PREHOOK: query: INSERT INTO tbl2 VALUES(1, 'value1')
++PREHOOK: type: QUERY
++PREHOOK: Output: default@tbl2
++POSTHOOK: query: INSERT INTO tbl2 VALUES(1, 'value1')
++POSTHOOK: type: QUERY
++POSTHOOK: Output: default@tbl2
++POSTHOOK: Lineage: tbl2.id EXPRESSION [(values__tmp__table__2)values__tmp__table__2.FieldSchema(name:tmp_values_col1, type:string, comment:), ]
++POSTHOOK: Lineage: tbl2.value SIMPLE [(values__tmp__table__2)values__tmp__table__2.FieldSchema(name:tmp_values_col2, type:string, comment:), ]
++PREHOOK: query: INSERT INTO tbl2 VALUES(1, 'value2')
++PREHOOK: type: QUERY
++PREHOOK: Output: default@tbl2
++POSTHOOK: query: INSERT INTO tbl2 VALUES(1, 'value2')
++POSTHOOK: type: QUERY
++POSTHOOK: Output: default@tbl2
++POSTHOOK: Lineage: tbl2.id EXPRESSION [(values__tmp__table__3)values__tmp__table__3.FieldSchema(name:tmp_values_col1, type:string, comment:), ]
++POSTHOOK: Lineage: tbl2.value SIMPLE [(values__tmp__table__3)values__tmp__table__3.FieldSchema(name:tmp_values_col2, type:string, comment:), ]
++PREHOOK: query: select tbl1.id, t1.value, t2.value
++FROM tbl1
++JOIN (SELECT * FROM tbl2 WHERE value='value1') t1 ON tbl1.id=t1.id
++JOIN (SELECT * FROM tbl2 WHERE value='value2') t2 ON tbl1.id=t2.id
++PREHOOK: type: QUERY
++PREHOOK: Input: default@tbl1
++PREHOOK: Input: default@tbl2
++#### A masked pattern was here ####
++POSTHOOK: query: select tbl1.id, t1.value, t2.value
++FROM tbl1
++JOIN (SELECT * FROM tbl2 WHERE value='value1') t1 ON tbl1.id=t1.id
++JOIN (SELECT * FROM tbl2 WHERE value='value2') t2 ON tbl1.id=t2.id
++POSTHOOK: type: QUERY
++POSTHOOK: Input: default@tbl1
++POSTHOOK: Input: default@tbl2
++#### A masked pattern was here ####
+-- 
+1.7.9.5
+

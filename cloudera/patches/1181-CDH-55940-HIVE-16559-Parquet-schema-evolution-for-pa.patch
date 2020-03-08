@@ -1,0 +1,167 @@
+From c32a69ef993039d0814b663495d99ec416f4b4e4 Mon Sep 17 00:00:00 2001
+From: Barna Zsombor Klara <zsombor.klara@cloudera.com>
+Date: Tue, 27 Jun 2017 10:21:46 -0500
+Subject: [PATCH 1181/1363] CDH-55940: HIVE-16559: Parquet schema evolution
+ for partitioned tables may break if table and
+ partition serdes differ (Barna Zsombor Klara,
+ reviewed by Sergio Pena)
+
+Change-Id: Ia9f8005ca9aec63f4bd3a480bcf328e7a8f9e557
+---
+ .../java/org/apache/hadoop/hive/ql/ErrorMsg.java   |    1 +
+ .../org/apache/hadoop/hive/ql/exec/DDLTask.java    |   10 ++++
+ .../hive/ql/io/parquet/serde/ParquetHiveSerDe.java |    9 ++++
+ .../parquet_alter_part_table_drop_columns.q        |   22 ++++++++
+ .../parquet_alter_part_table_drop_columns.q.out    |   53 ++++++++++++++++++++
+ 5 files changed, 95 insertions(+)
+ create mode 100644 ql/src/test/queries/clientnegative/parquet_alter_part_table_drop_columns.q
+ create mode 100644 ql/src/test/results/clientnegative/parquet_alter_part_table_drop_columns.q.out
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/ErrorMsg.java b/ql/src/java/org/apache/hadoop/hive/ql/ErrorMsg.java
+index a8f0687..cd9ab91 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/ErrorMsg.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/ErrorMsg.java
+@@ -432,6 +432,7 @@
+   COMPILE_LOCK_TIMED_OUT(10308, "Attempt to acquire compile lock timed out.", true),
+   UPDATE_CANNOT_UPDATE_BUCKET_VALUE(10302, "Updating values of bucketing columns is not supported.  Column {0}.", true),
+   IMPORT_INTO_STRICT_REPL_TABLE(10303,"Non-repl import disallowed against table that is a destination of replication."),
++  REPLACE_CANNOT_DROP_COLUMNS(10313, "Replacing columns cannot drop columns for table {0}. SerDe may be incompatible", true),
+   LOCK_ACQUIRE_CANCELLED(10330, "Query was cancelled while acquiring locks on the underlying objects. "),
+   //========================== 20000 range starts here ========================//
+   SCRIPT_INIT_ERROR(20000, "Unable to initialize custom script."),
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/DDLTask.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/DDLTask.java
+index 4d586cd..884fe11 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/DDLTask.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/DDLTask.java
+@@ -3550,6 +3550,16 @@ private int alterTableOrSinglePartition(AlterTableDesc alterTbl, Table tbl, Part
+           && !serializationLib.equals(ParquetHiveSerDe.class.getName())) {
+         throw new HiveException(ErrorMsg.CANNOT_REPLACE_COLUMNS, alterTbl.getOldName());
+       }
++
++      boolean partitioned = tbl.isPartitioned();
++      boolean droppingColumns = alterTbl.getNewCols().size() < sd.getCols().size();
++      if (ParquetHiveSerDe.isParquetTable(tbl) &&
++          !alterTbl.getIsCascade() &&
++          droppingColumns && partitioned) {
++        LOG.warn("Cannot drop columns from a partitioned parquet table without the CASCADE option");
++        throw new HiveException(ErrorMsg.REPLACE_CANNOT_DROP_COLUMNS,
++            alterTbl.getOldName());
++      }
+       sd.setCols(alterTbl.getNewCols());
+     } else if (alterTbl.getOp() == AlterTableDesc.AlterTableTypes.ADDPROPS) {
+       tbl.getTTable().getParameters().putAll(alterTbl.getProps());
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/serde/ParquetHiveSerDe.java b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/serde/ParquetHiveSerDe.java
+index 8e13bf1..09a7755 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/serde/ParquetHiveSerDe.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/serde/ParquetHiveSerDe.java
+@@ -19,6 +19,7 @@
+ import java.util.Properties;
+ 
+ import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.hive.ql.metadata.Table;
+ import org.apache.hadoop.hive.serde.serdeConstants;
+ import org.apache.hadoop.hive.serde2.AbstractSerDe;
+ import org.apache.hadoop.hive.serde2.SerDeException;
+@@ -164,4 +165,12 @@ public SerDeStats getSerDeStats() {
+     }
+     return stats;
+   }
++
++  /**
++   * @param table
++   * @return true if the table has the parquet serde defined
++   */
++  public static boolean isParquetTable(Table table) {
++    return  table == null ? false : ParquetHiveSerDe.class.getName().equals(table.getSerializationLib());
++  }
+ }
+diff --git a/ql/src/test/queries/clientnegative/parquet_alter_part_table_drop_columns.q b/ql/src/test/queries/clientnegative/parquet_alter_part_table_drop_columns.q
+new file mode 100644
+index 0000000..8fd389e
+--- /dev/null
++++ b/ql/src/test/queries/clientnegative/parquet_alter_part_table_drop_columns.q
+@@ -0,0 +1,22 @@
++CREATE TABLE myparquettable_parted
++(
++  name string,
++  favnumber int,
++  favcolor string
++)
++PARTITIONED BY (day string)
++STORED AS PARQUET;
++
++INSERT OVERWRITE TABLE myparquettable_parted
++PARTITION(day='2017-04-04')
++SELECT
++   'mary' as name,
++   5 AS favnumber,
++   'blue' AS favcolor;
++
++alter table myparquettable_parted
++REPLACE COLUMNS
++(
++name string,
++favnumber int
++);
+diff --git a/ql/src/test/results/clientnegative/parquet_alter_part_table_drop_columns.q.out b/ql/src/test/results/clientnegative/parquet_alter_part_table_drop_columns.q.out
+new file mode 100644
+index 0000000..d22d9c8
+--- /dev/null
++++ b/ql/src/test/results/clientnegative/parquet_alter_part_table_drop_columns.q.out
+@@ -0,0 +1,53 @@
++PREHOOK: query: CREATE TABLE myparquettable_parted
++(
++  name string,
++  favnumber int,
++  favcolor string
++)
++PARTITIONED BY (day string)
++STORED AS PARQUET
++PREHOOK: type: CREATETABLE
++PREHOOK: Output: database:default
++PREHOOK: Output: default@myparquettable_parted
++POSTHOOK: query: CREATE TABLE myparquettable_parted
++(
++  name string,
++  favnumber int,
++  favcolor string
++)
++PARTITIONED BY (day string)
++STORED AS PARQUET
++POSTHOOK: type: CREATETABLE
++POSTHOOK: Output: database:default
++POSTHOOK: Output: default@myparquettable_parted
++PREHOOK: query: INSERT OVERWRITE TABLE myparquettable_parted
++PARTITION(day='2017-04-04')
++SELECT
++   'mary' as name,
++   5 AS favnumber,
++   'blue' AS favcolor
++PREHOOK: type: QUERY
++PREHOOK: Input: _dummy_database@_dummy_table
++PREHOOK: Output: default@myparquettable_parted@day=2017-04-04
++POSTHOOK: query: INSERT OVERWRITE TABLE myparquettable_parted
++PARTITION(day='2017-04-04')
++SELECT
++   'mary' as name,
++   5 AS favnumber,
++   'blue' AS favcolor
++POSTHOOK: type: QUERY
++POSTHOOK: Input: _dummy_database@_dummy_table
++POSTHOOK: Output: default@myparquettable_parted@day=2017-04-04
++POSTHOOK: Lineage: myparquettable_parted PARTITION(day=2017-04-04).favcolor SIMPLE []
++POSTHOOK: Lineage: myparquettable_parted PARTITION(day=2017-04-04).favnumber SIMPLE []
++POSTHOOK: Lineage: myparquettable_parted PARTITION(day=2017-04-04).name SIMPLE []
++PREHOOK: query: alter table myparquettable_parted
++REPLACE COLUMNS
++(
++name string,
++favnumber int
++)
++PREHOOK: type: ALTERTABLE_REPLACECOLS
++PREHOOK: Input: default@myparquettable_parted
++PREHOOK: Output: default@myparquettable_parted
++FAILED: Execution Error, return code 1 from org.apache.hadoop.hive.ql.exec.DDLTask. Replacing columns cannot drop columns for table default.myparquettable_parted. SerDe may be incompatible
+-- 
+1.7.9.5
+

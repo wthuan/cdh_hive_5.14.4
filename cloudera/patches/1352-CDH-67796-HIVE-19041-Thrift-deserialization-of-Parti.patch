@@ -1,0 +1,435 @@
+From d4cc43c5f4d9b4b86a4874cb5fc04b9f910aa506 Mon Sep 17 00:00:00 2001
+From: Vihang Karajgaonkar <vihang@cloudera.com>
+Date: Fri, 11 May 2018 11:55:48 -0700
+Subject: [PATCH 1352/1363] CDH-67796 : HIVE-19041 : Thrift deserialization of
+ Partition objects should intern fields (Vihang
+ Karajgaonkar reviewed by Sahil Takiar and Misha
+ Dmitriev)
+
+Change-Id: If0abf040e3e1d77f596240d5d10d1f01bb609022
+(cherry picked from commit 55a454b3f4febf23b9cda0bd7793ed4418a8be7a)
+---
+ metastore/pom.xml                                  |    2 ++
+ .../hive/metastore/api/ColumnStatisticsDesc.java   |   20 +++++------
+ .../hive/metastore/api/ColumnStatisticsObj.java    |   20 +++++------
+ .../hadoop/hive/metastore/api/FieldSchema.java     |   12 +++----
+ .../hadoop/hive/metastore/api/Partition.java       |    8 ++---
+ .../hadoop/hive/metastore/api/SerDeInfo.java       |    8 ++---
+ .../hive/metastore/api/StorageDescriptor.java      |   16 ++++-----
+ .../src/main/resources/thrift-replacements.txt     |   36 +++++++++++++++++++-
+ 8 files changed, 79 insertions(+), 43 deletions(-)
+
+diff --git a/metastore/pom.xml b/metastore/pom.xml
+index 553e281..5fe68ff 100644
+--- a/metastore/pom.xml
++++ b/metastore/pom.xml
+@@ -199,6 +199,8 @@
+                     <include>Partition.java</include>
+                     <include>SerDeInfo.java</include>
+                     <include>StorageDescriptor.java</include>
++                    <include>ColumnStatisticsDesc.java</include>
++                    <include>ColumnStatisticsObj.java</include>
+                   </includes>
+                   <tokenValueMap>${basedir}/src/main/resources/thrift-replacements.txt</tokenValueMap>
+                   <regex>true</regex>
+diff --git a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/ColumnStatisticsDesc.java b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/ColumnStatisticsDesc.java
+index fbcd06c..91b7888 100644
+--- a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/ColumnStatisticsDesc.java
++++ b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/ColumnStatisticsDesc.java
+@@ -155,8 +155,8 @@ public ColumnStatisticsDesc(
+     this();
+     this.isTblLevel = isTblLevel;
+     setIsTblLevelIsSet(true);
+-    this.dbName = dbName;
+-    this.tableName = tableName;
++    this.dbName = org.apache.hive.common.util.HiveStringUtils.intern(dbName);
++    this.tableName = org.apache.hive.common.util.HiveStringUtils.intern(tableName);
+   }
+ 
+   /**
+@@ -166,10 +166,10 @@ public ColumnStatisticsDesc(ColumnStatisticsDesc other) {
+     __isset_bitfield = other.__isset_bitfield;
+     this.isTblLevel = other.isTblLevel;
+     if (other.isSetDbName()) {
+-      this.dbName = other.dbName;
++      this.dbName = org.apache.hive.common.util.HiveStringUtils.intern(other.dbName);
+     }
+     if (other.isSetTableName()) {
+-      this.tableName = other.tableName;
++      this.tableName = org.apache.hive.common.util.HiveStringUtils.intern(other.tableName);
+     }
+     if (other.isSetPartName()) {
+       this.partName = other.partName;
+@@ -219,7 +219,7 @@ public String getDbName() {
+   }
+ 
+   public void setDbName(String dbName) {
+-    this.dbName = dbName;
++    this.dbName = org.apache.hive.common.util.HiveStringUtils.intern(dbName);
+   }
+ 
+   public void unsetDbName() {
+@@ -242,7 +242,7 @@ public String getTableName() {
+   }
+ 
+   public void setTableName(String tableName) {
+-    this.tableName = tableName;
++    this.tableName = org.apache.hive.common.util.HiveStringUtils.intern(tableName);
+   }
+ 
+   public void unsetTableName() {
+@@ -665,7 +665,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, ColumnStatisticsDes
+             break;
+           case 2: // DB_NAME
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.dbName = iprot.readString();
++              struct.dbName = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setDbNameIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -673,7 +673,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, ColumnStatisticsDes
+             break;
+           case 3: // TABLE_NAME
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.tableName = iprot.readString();
++              struct.tableName = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setTableNameIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -774,9 +774,9 @@ public void read(org.apache.thrift.protocol.TProtocol prot, ColumnStatisticsDesc
+       TTupleProtocol iprot = (TTupleProtocol) prot;
+       struct.isTblLevel = iprot.readBool();
+       struct.setIsTblLevelIsSet(true);
+-      struct.dbName = iprot.readString();
++      struct.dbName = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+       struct.setDbNameIsSet(true);
+-      struct.tableName = iprot.readString();
++      struct.tableName = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+       struct.setTableNameIsSet(true);
+       BitSet incoming = iprot.readBitSet(2);
+       if (incoming.get(0)) {
+diff --git a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/ColumnStatisticsObj.java b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/ColumnStatisticsObj.java
+index 88e78c7..d9aae6a 100644
+--- a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/ColumnStatisticsObj.java
++++ b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/ColumnStatisticsObj.java
+@@ -135,8 +135,8 @@ public ColumnStatisticsObj(
+     ColumnStatisticsData statsData)
+   {
+     this();
+-    this.colName = colName;
+-    this.colType = colType;
++    this.colName = org.apache.hive.common.util.HiveStringUtils.intern(colName);
++    this.colType = org.apache.hive.common.util.HiveStringUtils.intern(colType);
+     this.statsData = statsData;
+   }
+ 
+@@ -145,10 +145,10 @@ public ColumnStatisticsObj(
+    */
+   public ColumnStatisticsObj(ColumnStatisticsObj other) {
+     if (other.isSetColName()) {
+-      this.colName = other.colName;
++      this.colName = org.apache.hive.common.util.HiveStringUtils.intern(other.colName);
+     }
+     if (other.isSetColType()) {
+-      this.colType = other.colType;
++      this.colType = org.apache.hive.common.util.HiveStringUtils.intern(other.colType);
+     }
+     if (other.isSetStatsData()) {
+       this.statsData = new ColumnStatisticsData(other.statsData);
+@@ -171,7 +171,7 @@ public String getColName() {
+   }
+ 
+   public void setColName(String colName) {
+-    this.colName = colName;
++    this.colName = org.apache.hive.common.util.HiveStringUtils.intern(colName);
+   }
+ 
+   public void unsetColName() {
+@@ -194,7 +194,7 @@ public String getColType() {
+   }
+ 
+   public void setColType(String colType) {
+-    this.colType = colType;
++    this.colType = org.apache.hive.common.util.HiveStringUtils.intern(colType);
+   }
+ 
+   public void unsetColType() {
+@@ -499,7 +499,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, ColumnStatisticsObj
+         switch (schemeField.id) {
+           case 1: // COL_NAME
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.colName = iprot.readString();
++              struct.colName = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setColNameIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -507,7 +507,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, ColumnStatisticsObj
+             break;
+           case 2: // COL_TYPE
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.colType = iprot.readString();
++              struct.colType = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setColTypeIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -575,9 +575,9 @@ public void write(org.apache.thrift.protocol.TProtocol prot, ColumnStatisticsObj
+     @Override
+     public void read(org.apache.thrift.protocol.TProtocol prot, ColumnStatisticsObj struct) throws org.apache.thrift.TException {
+       TTupleProtocol iprot = (TTupleProtocol) prot;
+-      struct.colName = iprot.readString();
++      struct.colName = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+       struct.setColNameIsSet(true);
+-      struct.colType = iprot.readString();
++      struct.colType = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+       struct.setColTypeIsSet(true);
+       struct.statsData = new ColumnStatisticsData();
+       struct.statsData.read(iprot);
+diff --git a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/FieldSchema.java b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/FieldSchema.java
+index 11de82a..e6f8b08 100644
+--- a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/FieldSchema.java
++++ b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/FieldSchema.java
+@@ -487,7 +487,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, FieldSchema struct)
+         switch (schemeField.id) {
+           case 1: // NAME
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.name = iprot.readString();
++              struct.name = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setNameIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -495,7 +495,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, FieldSchema struct)
+             break;
+           case 2: // TYPE
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.type = iprot.readString();
++              struct.type = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setTypeIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -503,7 +503,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, FieldSchema struct)
+             break;
+           case 3: // COMMENT
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.comment = iprot.readString();
++              struct.comment = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setCommentIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -581,15 +581,15 @@ public void read(org.apache.thrift.protocol.TProtocol prot, FieldSchema struct)
+       TTupleProtocol iprot = (TTupleProtocol) prot;
+       BitSet incoming = iprot.readBitSet(3);
+       if (incoming.get(0)) {
+-        struct.name = iprot.readString();
++        struct.name = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+         struct.setNameIsSet(true);
+       }
+       if (incoming.get(1)) {
+-        struct.type = iprot.readString();
++        struct.type = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+         struct.setTypeIsSet(true);
+       }
+       if (incoming.get(2)) {
+-        struct.comment = iprot.readString();
++        struct.comment = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+         struct.setCommentIsSet(true);
+       }
+     }
+diff --git a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/Partition.java b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/Partition.java
+index 0337e9c..a779226 100644
+--- a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/Partition.java
++++ b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/Partition.java
+@@ -958,7 +958,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, Partition struct) t
+             break;
+           case 2: // DB_NAME
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.dbName = iprot.readString();
++              struct.dbName = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setDbNameIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -966,7 +966,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, Partition struct) t
+             break;
+           case 3: // TABLE_NAME
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.tableName = iprot.readString();
++              struct.tableName = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setTableNameIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -1192,11 +1192,11 @@ public void read(org.apache.thrift.protocol.TProtocol prot, Partition struct) th
+         struct.setValuesIsSet(true);
+       }
+       if (incoming.get(1)) {
+-        struct.dbName = iprot.readString();
++        struct.dbName = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+         struct.setDbNameIsSet(true);
+       }
+       if (incoming.get(2)) {
+-        struct.tableName = iprot.readString();
++        struct.tableName = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+         struct.setTableNameIsSet(true);
+       }
+       if (incoming.get(3)) {
+diff --git a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/SerDeInfo.java b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/SerDeInfo.java
+index 47a8d5c..5fee418 100644
+--- a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/SerDeInfo.java
++++ b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/SerDeInfo.java
+@@ -512,7 +512,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, SerDeInfo struct) t
+         switch (schemeField.id) {
+           case 1: // NAME
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.name = iprot.readString();
++              struct.name = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setNameIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -520,7 +520,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, SerDeInfo struct) t
+             break;
+           case 2: // SERIALIZATION_LIB
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.serializationLib = iprot.readString();
++              struct.serializationLib = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setSerializationLibIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -633,11 +633,11 @@ public void read(org.apache.thrift.protocol.TProtocol prot, SerDeInfo struct) th
+       TTupleProtocol iprot = (TTupleProtocol) prot;
+       BitSet incoming = iprot.readBitSet(3);
+       if (incoming.get(0)) {
+-        struct.name = iprot.readString();
++        struct.name = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+         struct.setNameIsSet(true);
+       }
+       if (incoming.get(1)) {
+-        struct.serializationLib = iprot.readString();
++        struct.serializationLib = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+         struct.setSerializationLibIsSet(true);
+       }
+       if (incoming.get(2)) {
+diff --git a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/StorageDescriptor.java b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/StorageDescriptor.java
+index e862d70..9ca21c1 100644
+--- a/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/StorageDescriptor.java
++++ b/metastore/src/gen/thrift/gen-javabean/org/apache/hadoop/hive/metastore/api/StorageDescriptor.java
+@@ -1318,7 +1318,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, StorageDescriptor s
+             break;
+           case 2: // LOCATION
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.location = iprot.readString();
++              struct.location = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setLocationIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -1326,7 +1326,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, StorageDescriptor s
+             break;
+           case 3: // INPUT_FORMAT
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.inputFormat = iprot.readString();
++              struct.inputFormat = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setInputFormatIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -1334,7 +1334,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, StorageDescriptor s
+             break;
+           case 4: // OUTPUT_FORMAT
+             if (schemeField.type == org.apache.thrift.protocol.TType.STRING) {
+-              struct.outputFormat = iprot.readString();
++              struct.outputFormat = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+               struct.setOutputFormatIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+@@ -1378,7 +1378,7 @@ public void read(org.apache.thrift.protocol.TProtocol iprot, StorageDescriptor s
+                 }
+                 iprot.readListEnd();
+               }
+-              struct.setBucketColsIsSet(true);
++              struct.bucketCols = org.apache.hive.common.util.HiveStringUtils.intern(struct.bucketCols); struct.setBucketColsIsSet(true);
+             } else { 
+               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+             }
+@@ -1676,15 +1676,15 @@ public void read(org.apache.thrift.protocol.TProtocol prot, StorageDescriptor st
+         struct.setColsIsSet(true);
+       }
+       if (incoming.get(1)) {
+-        struct.location = iprot.readString();
++        struct.location = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+         struct.setLocationIsSet(true);
+       }
+       if (incoming.get(2)) {
+-        struct.inputFormat = iprot.readString();
++        struct.inputFormat = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+         struct.setInputFormatIsSet(true);
+       }
+       if (incoming.get(3)) {
+-        struct.outputFormat = iprot.readString();
++        struct.outputFormat = org.apache.hive.common.util.HiveStringUtils.intern(iprot.readString());
+         struct.setOutputFormatIsSet(true);
+       }
+       if (incoming.get(4)) {
+@@ -1711,7 +1711,7 @@ public void read(org.apache.thrift.protocol.TProtocol prot, StorageDescriptor st
+             struct.bucketCols.add(_elem182);
+           }
+         }
+-        struct.setBucketColsIsSet(true);
++        struct.bucketCols = org.apache.hive.common.util.HiveStringUtils.intern(struct.bucketCols); struct.setBucketColsIsSet(true);
+       }
+       if (incoming.get(8)) {
+         {
+diff --git a/metastore/src/main/resources/thrift-replacements.txt b/metastore/src/main/resources/thrift-replacements.txt
+index 4b33243..59aceef 100644
+--- a/metastore/src/main/resources/thrift-replacements.txt
++++ b/metastore/src/main/resources/thrift-replacements.txt
+@@ -34,10 +34,18 @@ this\.inputFormat\ \=\ inputFormat;=this.inputFormat\ \=\ org.apache.hive.common
+ this\.outputFormat\ \=\ outputFormat;=this.outputFormat\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(outputFormat);
+ this\.dbName\ \=\ dbName;=this.dbName\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(dbName);
+ this\.tableName\ \=\ tableName;=this.tableName\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(tableName);
++this\.serializerClass\ \=\ serializerClass;=this\.serializerClass\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(serializerClass);
++this\.deserializerClass\ \=\ deserializerClass;=this\.deserializerClass\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(deserializerClass);
++this\.colName\ \=\ colName;=this\.colName\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(colName);
++this\.colType\ \=\ colType;=this\.colType\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(colType);
+ 
+ # Fix constructors and setters of List<String> instance fields
+ 
+ this\.bucketCols\ \=\ bucketCols;=this.bucketCols\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(bucketCols);
++this\.serializerClass\ \=\ other\.serializerClass;=this\.serializerClass\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(other.serializerClass);
++this\.deserializerClass\ \=\ other\.deserializerClass;=this\.deserializerClass\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(other.deserializerClass);
++this\.colName\ \=\ other\.colName;=this\.colName\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(other.colName);
++this\.colType\ \=\ other\.colType;=this\.colType\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(other.colType);
+ 
+ # Fix constructors and setters of Map<String, String> instance fields
+ 
+@@ -65,4 +73,30 @@ this\.parameters\.put\(key,\ val\);=this.parameters.put(org.apache.hive.common.u
+ 
+ # Fix the deserialization methods in Partitions.java: intern parameters after it's deserialized
+ 
+-struct\.setParametersIsSet\(true\);=struct.parameters\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(struct.parameters);\ struct.setParametersIsSet(true);
+\ No newline at end of file
++struct\.setParametersIsSet\(true\);=struct.parameters\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(struct.parameters);\ struct.setParametersIsSet(true);
++
++# Fix the StandardScheme read method which deserializes the fields into the thrift objects
++
++# PartitionStandardScheme - parameters are already interned above
++struct\.dbName\ \=\ iprot\.readString\(\);=struct\.dbName\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(iprot\.readString\(\));
++struct\.tableName\ \=\ iprot\.readString\(\);=struct\.tableName\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(iprot\.readString\(\));
++
++# StorageDescriptorStandardScheme - parameters are already interned above
++struct\.location\ \=\ iprot\.readString\(\);=struct\.location\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(iprot\.readString\(\));
++struct\.inputFormat\ \=\ iprot\.readString\(\);=struct\.inputFormat\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(iprot\.readString\(\));
++struct\.outputFormat\ \=\ iprot\.readString\(\);=struct\.outputFormat\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(iprot\.readString\(\));
++struct\.setBucketColsIsSet\(true\);=struct\.bucketCols\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(struct.bucketCols);\ struct.setBucketColsIsSet(true);
++
++# SerDeInfoStandardScheme - parameters are already interned above
++struct\.name\ \=\ iprot\.readString\(\);=struct\.name\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(iprot\.readString\(\));
++struct\.serializationLib\ \=\ iprot\.readString\(\);=struct\.serializationLib\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(iprot\.readString\(\));
++struct\.serializerClass\ \=\ iprot\.readString\(\);=struct\.serializerClass\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(iprot\.readString\(\));
++struct\.deserializerClass\ \=\ iprot\.readString\(\);=struct\.deserializerClass\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(iprot\.readString\(\));
++
++# FieldSchemaStandardScheme - name field gets automatically handled above
++struct\.type\ \=\ iprot\.readString\(\);=struct\.type\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(iprot\.readString\(\));
++struct\.comment\ \=\ iprot\.readString\(\);=struct\.comment\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(iprot\.readString\(\));
++
++# ColumnStatisticsObjStandardScheme
++struct\.colName\ \=\ iprot\.readString\(\);=struct\.colName\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(iprot\.readString\(\));
++struct\.colType\ \=\ iprot\.readString\(\);=struct\.colType\ \=\ org.apache.hive.common.util.HiveStringUtils.intern(iprot\.readString\(\));
+-- 
+1.7.9.5
+

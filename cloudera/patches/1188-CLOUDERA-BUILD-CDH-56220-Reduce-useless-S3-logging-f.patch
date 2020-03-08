@@ -1,0 +1,33 @@
+From 29f323fddf5bd9d80fc9c3597d4fd066ada5b690 Mon Sep 17 00:00:00 2001
+From: zsomborklara <zsombor.klara@cloudera.com>
+Date: Mon, 10 Jul 2017 13:52:21 +0200
+Subject: [PATCH 1188/1363] CLOUDERA-BUILD: CDH-56220: Reduce useless S3
+ logging from log4j
+
+Change-Id: I1dd6fc016d042b44e25bb8de282f1ba9b907c718
+---
+ data/conf/hive-log4j.properties  |    1 +
+ data/conf/spark/log4j.properties |    1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/data/conf/hive-log4j.properties b/data/conf/hive-log4j.properties
+index 1f90dda..f729ac3 100644
+--- a/data/conf/hive-log4j.properties
++++ b/data/conf/hive-log4j.properties
+@@ -108,3 +108,4 @@ log4j.logger.org.apache.hadoop.hive.metastore.ObjectStore=INFO,DRFA
+ log4j.logger.org.apache.directory=INFO,DRFA
+ log4j.logger.org.spark-project=INFO,DRFA
+ log4j.logger.org.apache.spark=INFO,DRFA
++log4j.logger.com.amazonaws=INFO,DRFA
+diff --git a/data/conf/spark/log4j.properties b/data/conf/spark/log4j.properties
+index c2078df..b8e9255 100644
+--- a/data/conf/spark/log4j.properties
++++ b/data/conf/spark/log4j.properties
+@@ -56,3 +56,4 @@ log4j.logger.org.apache.hadoop.hive.metastore.ObjectStore=INFO,DRFA
+ log4j.logger.org.apache.directory=INFO,DRFA
+ log4j.logger.org.spark-project=INFO,DRFA
+ log4j.logger.org.apache.spark=INFO,DRFA
++log4j.logger.com.amazonaws=INFO,DRFA
+-- 
+1.7.9.5
+

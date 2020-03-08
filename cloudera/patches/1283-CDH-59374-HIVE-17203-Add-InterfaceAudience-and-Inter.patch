@@ -1,0 +1,771 @@
+From ee98d889f0912214198d9504cd31dbb7f2116839 Mon Sep 17 00:00:00 2001
+From: Sahil Takiar <stakiar@cloudera.com>
+Date: Sun, 17 Sep 2017 17:13:15 -0700
+Subject: [PATCH 1283/1363] CDH-59374: HIVE-17203: Add InterfaceAudience and
+ InterfaceStability annotations for HCat APIs
+ (Sahil Takiar, reviewed by Aihua Xu)
+
+(cherry picked from commit a51ae9c8f5700638d0cc8c1d7f085ebf061f996f)
+
+Change-Id: I655918a64e931c0130c1baaedbffdfe320d8ae95
+---
+ .../apache/hive/hcatalog/common/HCatContext.java   |    2 +-
+ .../apache/hive/hcatalog/common/HCatException.java |    5 +++++
+ .../org/apache/hive/hcatalog/data/HCatRecord.java  |    2 +-
+ .../hive/hcatalog/data/schema/HCatFieldSchema.java |    2 +-
+ .../hive/hcatalog/data/schema/HCatSchema.java      |    2 +-
+ .../hive/hcatalog/mapreduce/HCatInputFormat.java   |    2 +-
+ .../hive/hcatalog/mapreduce/HCatOutputFormat.java  |    2 +-
+ .../hive/hcatalog/mapreduce/OutputJobInfo.java     |    4 ++++
+ .../org/apache/hive/hcatalog/pig/HCatLoader.java   |    2 +-
+ .../org/apache/hive/hcatalog/pig/HCatStorer.java   |    2 +-
+ .../hcatalog/messaging/AddPartitionMessage.java    |    5 +++++
+ .../hive/hcatalog/messaging/AlterIndexMessage.java |    7 ++++++-
+ .../hcatalog/messaging/AlterPartitionMessage.java  |    5 +++++
+ .../hive/hcatalog/messaging/AlterTableMessage.java |    5 +++++
+ .../hcatalog/messaging/CreateDatabaseMessage.java  |    5 +++++
+ .../hcatalog/messaging/CreateFunctionMessage.java  |    5 +++++
+ .../hcatalog/messaging/CreateIndexMessage.java     |    7 ++++++-
+ .../hcatalog/messaging/CreateTableMessage.java     |    5 +++++
+ .../hcatalog/messaging/DropDatabaseMessage.java    |    5 +++++
+ .../hcatalog/messaging/DropFunctionMessage.java    |    7 ++++++-
+ .../hive/hcatalog/messaging/DropIndexMessage.java  |    7 ++++++-
+ .../hcatalog/messaging/DropPartitionMessage.java   |    5 +++++
+ .../hive/hcatalog/messaging/DropTableMessage.java  |    5 +++++
+ .../hive/hcatalog/messaging/HCatEventMessage.java  |    4 ++++
+ .../hive/hcatalog/messaging/InsertMessage.java     |    5 +++++
+ .../hcatalog/messaging/MessageDeserializer.java    |    4 ++++
+ .../hive/hcatalog/messaging/MessageFactory.java    |    2 ++
+ .../hive/hcatalog/api/HCatAddPartitionDesc.java    |    4 ++++
+ .../org/apache/hive/hcatalog/api/HCatClient.java   |    2 ++
+ .../apache/hive/hcatalog/api/HCatCreateDBDesc.java |    4 ++++
+ .../hive/hcatalog/api/HCatCreateTableDesc.java     |    4 ++++
+ .../org/apache/hive/hcatalog/api/HCatDatabase.java |    4 ++++
+ .../hive/hcatalog/api/HCatNotificationEvent.java   |    4 ++++
+ .../apache/hive/hcatalog/api/HCatPartition.java    |    4 ++++
+ .../org/apache/hive/hcatalog/api/HCatTable.java    |    4 ++++
+ .../hive/hcatalog/api/MetadataSerializer.java      |    2 ++
+ .../org/apache/hive/hcatalog/api/repl/Command.java |    4 ++++
+ .../hive/hcatalog/api/repl/ReplicationTask.java    |    4 +++-
+ 38 files changed, 140 insertions(+), 13 deletions(-)
+
+diff --git a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/common/HCatContext.java b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/common/HCatContext.java
+index 84230fb..5b47ba0 100644
+--- a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/common/HCatContext.java
++++ b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/common/HCatContext.java
+@@ -45,7 +45,7 @@
+  * functionality must provide a sensible default.</p>
+  */
+ @InterfaceAudience.Public
+-@InterfaceStability.Evolving
++@InterfaceStability.Stable
+ public enum HCatContext {
+   INSTANCE;
+ 
+diff --git a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/common/HCatException.java b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/common/HCatException.java
+index 265d08d..a567f0e 100644
+--- a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/common/HCatException.java
++++ b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/common/HCatException.java
+@@ -18,11 +18,16 @@
+  */
+ package org.apache.hive.hcatalog.common;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ import java.io.IOException;
+ 
+ /**
+  * Class representing exceptions thrown by HCat.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class HCatException extends IOException {
+ 
+   private static final long serialVersionUID = 1L;
+diff --git a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/HCatRecord.java b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/HCatRecord.java
+index 75f8be0..ef59a7a 100644
+--- a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/HCatRecord.java
++++ b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/HCatRecord.java
+@@ -39,7 +39,7 @@
+  *   Don't use it to store data on the physical device.
+  */
+ @InterfaceAudience.Public
+-@InterfaceStability.Evolving
++@InterfaceStability.Stable
+ public abstract class HCatRecord implements HCatRecordable {
+ 
+   public abstract Object get(String fieldName, HCatSchema recordSchema) throws HCatException;
+diff --git a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/schema/HCatFieldSchema.java b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/schema/HCatFieldSchema.java
+index cd0f177..5ea3311 100644
+--- a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/schema/HCatFieldSchema.java
++++ b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/schema/HCatFieldSchema.java
+@@ -30,7 +30,7 @@
+ import org.apache.hive.hcatalog.common.HCatUtil;
+ 
+ @InterfaceAudience.Public
+-@InterfaceStability.Evolving
++@InterfaceStability.Stable
+ public class HCatFieldSchema implements Serializable {
+ /*the implementation of HCatFieldSchema is a bit messy since with the addition of parametrized 
+ types (e.g. char(7)) we need to represent something richer than an enum but for backwards 
+diff --git a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/schema/HCatSchema.java b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/schema/HCatSchema.java
+index c0209db..f91a520 100644
+--- a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/schema/HCatSchema.java
++++ b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/schema/HCatSchema.java
+@@ -33,7 +33,7 @@
+  * HCatSchema. This class is NOT thread-safe.
+  */
+ @InterfaceAudience.Public
+-@InterfaceStability.Evolving
++@InterfaceStability.Stable
+ public class HCatSchema implements Serializable {
+ 
+   private static final long serialVersionUID = 1L;
+diff --git a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/HCatInputFormat.java b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/HCatInputFormat.java
+index 22e7091..29e1629 100644
+--- a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/HCatInputFormat.java
++++ b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/HCatInputFormat.java
+@@ -35,7 +35,7 @@
+  * The InputFormat to use to read data from HCatalog.
+  */
+ @InterfaceAudience.Public
+-@InterfaceStability.Evolving
++@InterfaceStability.Stable
+ public class HCatInputFormat extends HCatBaseInputFormat {
+ 
+   private Configuration conf;
+diff --git a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/HCatOutputFormat.java b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/HCatOutputFormat.java
+index 6947398..48cc590 100644
+--- a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/HCatOutputFormat.java
++++ b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/HCatOutputFormat.java
+@@ -55,7 +55,7 @@
+ /** The OutputFormat to use to write data to HCatalog. The key value is ignored and
+  *  should be given as null. The value is the HCatRecord to write.*/
+ @InterfaceAudience.Public
+-@InterfaceStability.Evolving
++@InterfaceStability.Stable
+ public class HCatOutputFormat extends HCatBaseOutputFormat {
+ 
+   static final private Logger LOG = LoggerFactory.getLogger(HCatOutputFormat.class);
+diff --git a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/OutputJobInfo.java b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/OutputJobInfo.java
+index d50f43b..4c00e02 100644
+--- a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/OutputJobInfo.java
++++ b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/mapreduce/OutputJobInfo.java
+@@ -26,10 +26,14 @@
+ import java.util.Map;
+ import java.util.Properties;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.MetaStoreUtils;
+ import org.apache.hive.hcatalog.data.schema.HCatSchema;
+ 
+ /** The class used to serialize and store the output related information  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class OutputJobInfo implements Serializable {
+ 
+   /** The db and table names. */
+diff --git a/hcatalog/hcatalog-pig-adapter/src/main/java/org/apache/hive/hcatalog/pig/HCatLoader.java b/hcatalog/hcatalog-pig-adapter/src/main/java/org/apache/hive/hcatalog/pig/HCatLoader.java
+index d1cd256..83aa360 100644
+--- a/hcatalog/hcatalog-pig-adapter/src/main/java/org/apache/hive/hcatalog/pig/HCatLoader.java
++++ b/hcatalog/hcatalog-pig-adapter/src/main/java/org/apache/hive/hcatalog/pig/HCatLoader.java
+@@ -57,7 +57,7 @@
+  * Pig {@link org.apache.pig.LoadFunc} to read data from HCat
+  */
+ @InterfaceAudience.Public
+-@InterfaceStability.Evolving
++@InterfaceStability.Stable
+ public class HCatLoader extends HCatBaseLoader {
+   private static final Logger LOG = LoggerFactory.getLogger(HCatLoader.class);
+ 
+diff --git a/hcatalog/hcatalog-pig-adapter/src/main/java/org/apache/hive/hcatalog/pig/HCatStorer.java b/hcatalog/hcatalog-pig-adapter/src/main/java/org/apache/hive/hcatalog/pig/HCatStorer.java
+index 617eadf..00e4ef9 100644
+--- a/hcatalog/hcatalog-pig-adapter/src/main/java/org/apache/hive/hcatalog/pig/HCatStorer.java
++++ b/hcatalog/hcatalog-pig-adapter/src/main/java/org/apache/hive/hcatalog/pig/HCatStorer.java
+@@ -59,7 +59,7 @@
+  *
+  */
+ @InterfaceAudience.Public
+-@InterfaceStability.Evolving
++@InterfaceStability.Stable
+ public class HCatStorer extends HCatBaseStorer {
+   private static final Logger LOG = LoggerFactory.getLogger(HCatStorer.class);
+ 
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AddPartitionMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AddPartitionMessage.java
+index 5b114b5..ae92e96 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AddPartitionMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AddPartitionMessage.java
+@@ -19,12 +19,17 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ import java.util.List;
+ import java.util.Map;
+ 
+ /**
+  * The HCat message sent when partition(s) are added to a table.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class AddPartitionMessage extends HCatEventMessage {
+ 
+   protected AddPartitionMessage() {
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AlterIndexMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AlterIndexMessage.java
+index 4841dce..75e8b6c 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AlterIndexMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AlterIndexMessage.java
+@@ -19,12 +19,17 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * HCat message sent when a Index is altered in HCatalog.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class AlterIndexMessage extends HCatEventMessage {
+ 
+   protected AlterIndexMessage() {
+     super(EventType.ALTER_INDEX);
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AlterPartitionMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AlterPartitionMessage.java
+index 10a300d..e330a03 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AlterPartitionMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AlterPartitionMessage.java
+@@ -18,11 +18,16 @@
+  */
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ import java.util.Map;
+ 
+ /**
+  * HCat message sent when a table is Altered.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class AlterPartitionMessage extends HCatEventMessage {
+ 
+   protected AlterPartitionMessage() {
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AlterTableMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AlterTableMessage.java
+index 0b58f29..4936dfb 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AlterTableMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/AlterTableMessage.java
+@@ -18,9 +18,14 @@
+  */
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * HCat message sent when a table is Altered.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class AlterTableMessage extends HCatEventMessage {
+ 
+   protected AlterTableMessage() {
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateDatabaseMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateDatabaseMessage.java
+index e465ab3..34c5219 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateDatabaseMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateDatabaseMessage.java
+@@ -19,9 +19,14 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * HCat message sent when a Database is created in HCatalog.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class CreateDatabaseMessage extends HCatEventMessage {
+ 
+   protected CreateDatabaseMessage() {
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateFunctionMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateFunctionMessage.java
+index 753c165..773993f 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateFunctionMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateFunctionMessage.java
+@@ -19,9 +19,14 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * HCat message sent when a Function is created in HCatalog.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class CreateFunctionMessage extends HCatEventMessage {
+ 
+   protected CreateFunctionMessage() {
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateIndexMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateIndexMessage.java
+index 192f6de..78542c7 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateIndexMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateIndexMessage.java
+@@ -19,12 +19,17 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * HCat message sent when a Index is created in HCatalog.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class CreateIndexMessage extends HCatEventMessage {
+ 
+   protected CreateIndexMessage() {
+     super(EventType.CREATE_INDEX);
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateTableMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateTableMessage.java
+index 6c8e2a4..2b18826 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateTableMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/CreateTableMessage.java
+@@ -19,9 +19,14 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * HCat message sent when a table is created in HCatalog.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class CreateTableMessage extends HCatEventMessage {
+ 
+   protected CreateTableMessage() {
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropDatabaseMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropDatabaseMessage.java
+index d9675ba..7871746 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropDatabaseMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropDatabaseMessage.java
+@@ -19,9 +19,14 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * HCat message sent when a Database is dropped from HCatalog.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class DropDatabaseMessage extends HCatEventMessage {
+ 
+   protected DropDatabaseMessage() {
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropFunctionMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropFunctionMessage.java
+index 19d4d5b..10a5fe2 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropFunctionMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropFunctionMessage.java
+@@ -19,12 +19,17 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * HCat message sent when a Function is dropped in HCatalog.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class DropFunctionMessage extends HCatEventMessage {
+ 
+   protected DropFunctionMessage() {
+     super(EventType.DROP_FUNCTION);
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropIndexMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropIndexMessage.java
+index 46b7394..c3fbd1b 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropIndexMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropIndexMessage.java
+@@ -19,12 +19,17 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * HCat message sent when a Index is dropped in HCatalog.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class DropIndexMessage extends HCatEventMessage {
+ 
+   protected DropIndexMessage() {
+     super(EventType.DROP_INDEX);
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropPartitionMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropPartitionMessage.java
+index ee222ec..f02d32d 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropPartitionMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropPartitionMessage.java
+@@ -19,12 +19,17 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ import java.util.List;
+ import java.util.Map;
+ 
+ /**
+  * HCat message sent when a partition is dropped in HCatalog.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class DropPartitionMessage extends HCatEventMessage {
+ 
+   protected DropPartitionMessage() {
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropTableMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropTableMessage.java
+index e47b572..ef6e6d8 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropTableMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/DropTableMessage.java
+@@ -19,9 +19,14 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * HCat message sent when a Table is dropped in HCatalog.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class DropTableMessage extends HCatEventMessage {
+ 
+   protected DropTableMessage() {
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/HCatEventMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/HCatEventMessage.java
+index dca95c7..dfeaee7 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/HCatEventMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/HCatEventMessage.java
+@@ -19,12 +19,16 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hive.hcatalog.common.HCatConstants;
+ 
+ /**
+  * Class representing messages emitted when Metastore operations are done.
+  * (E.g. Creation and deletion of databases, tables and partitions.)
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class HCatEventMessage {
+ 
+   /**
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/InsertMessage.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/InsertMessage.java
+index be7ea10..dbe50ff 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/InsertMessage.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/InsertMessage.java
+@@ -19,12 +19,17 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ import java.util.List;
+ import java.util.Map;
+ 
+ /**
+  * HCat message sent when an insert is done to a table or partition.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class InsertMessage extends HCatEventMessage {
+ 
+   protected InsertMessage() {
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/MessageDeserializer.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/MessageDeserializer.java
+index e18780f..2a7b9ae 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/MessageDeserializer.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/MessageDeserializer.java
+@@ -19,12 +19,16 @@
+ 
+ package org.apache.hive.hcatalog.messaging;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hive.hcatalog.messaging.json.JSONCreateFunctionMessage;
+ import org.apache.hive.hcatalog.messaging.json.JSONDropFunctionMessage;
+ 
+ /**
+  * Interface for converting HCat events from String-form back to HCatEventMessage instances.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class MessageDeserializer {
+ 
+   /**
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/MessageFactory.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/MessageFactory.java
+index 4958377..50dba12 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/MessageFactory.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/messaging/MessageFactory.java
+@@ -37,6 +37,8 @@
+ /**
+  * Abstract Factory for the construction of HCatalog message instances.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class MessageFactory {
+ 
+   private static MessageFactory instance = null;
+diff --git a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatAddPartitionDesc.java b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatAddPartitionDesc.java
+index c667382..4d531f6 100644
+--- a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatAddPartitionDesc.java
++++ b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatAddPartitionDesc.java
+@@ -20,6 +20,8 @@
+ 
+ import java.util.Map;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hive.hcatalog.common.HCatException;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+@@ -27,6 +29,8 @@
+ /**
+  * The Class HCatAddPartitionDesc helps users in defining partition attributes.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class HCatAddPartitionDesc {
+ 
+   private static final Logger LOG = LoggerFactory.getLogger(HCatAddPartitionDesc.class);
+diff --git a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatClient.java b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatClient.java
+index c932d85..10eb6eb 100644
+--- a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatClient.java
++++ b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatClient.java
+@@ -35,6 +35,8 @@
+ /**
+  * The abstract class HCatClient containing APIs for HCatalog DDL commands.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class HCatClient {
+ 
+   public enum DropDBMode {RESTRICT, CASCADE}
+diff --git a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatCreateDBDesc.java b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatCreateDBDesc.java
+index fb05104..c55b777 100644
+--- a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatCreateDBDesc.java
++++ b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatCreateDBDesc.java
+@@ -20,12 +20,16 @@
+ 
+ import java.util.Map;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.api.Database;
+ import org.apache.hive.hcatalog.common.HCatException;
+ 
+ /**
+  * The Class HCatCreateDBDesc for defining database attributes.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class HCatCreateDBDesc {
+ 
+   private String dbName;
+diff --git a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatCreateTableDesc.java b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatCreateTableDesc.java
+index 5293f7b..1fa38e0 100644
+--- a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatCreateTableDesc.java
++++ b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatCreateTableDesc.java
+@@ -22,6 +22,8 @@
+ import java.util.List;
+ import java.util.Map;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.api.Order;
+ import org.apache.hadoop.hive.serde.serdeConstants;
+ import org.apache.hive.hcatalog.common.HCatException;
+@@ -31,6 +33,8 @@
+  * The Class HCatCreateTableDesc for defining attributes for a new table.
+  */
+ @SuppressWarnings("deprecation")
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class HCatCreateTableDesc {
+ 
+   private boolean ifNotExists;
+diff --git a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatDatabase.java b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatDatabase.java
+index 5f1bf05..8d97367 100644
+--- a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatDatabase.java
++++ b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatDatabase.java
+@@ -20,12 +20,16 @@
+ 
+ import java.util.Map;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.api.Database;
+ 
+ 
+ /**
+  * HCatDatabase is wrapper class around org.apache.hadoop.hive.metastore.api.Database.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class HCatDatabase {
+ 
+   private String dbName;
+diff --git a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatNotificationEvent.java b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatNotificationEvent.java
+index 0cc6117..663541d 100644
+--- a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatNotificationEvent.java
++++ b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatNotificationEvent.java
+@@ -18,12 +18,16 @@
+  */
+ package org.apache.hive.hcatalog.api;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.api.NotificationEvent;
+ 
+ /**
+  * A wrapper class for {@link org.apache.hadoop.hive.metastore.api.NotificationEvent},
+  * so that if that class changes we can still keep this one constant for backward compatibility
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class HCatNotificationEvent {
+   private long eventId;
+   private int eventTime;
+diff --git a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatPartition.java b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatPartition.java
+index ed40af7..4a3170a 100644
+--- a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatPartition.java
++++ b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatPartition.java
+@@ -25,6 +25,8 @@
+ import java.util.Map;
+ 
+ import org.apache.hadoop.fs.Path;
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.MetaStoreUtils;
+ import org.apache.hadoop.hive.metastore.Warehouse;
+ import org.apache.hadoop.hive.metastore.api.FieldSchema;
+@@ -41,6 +43,8 @@
+ /**
+  * The HCatPartition is a wrapper around org.apache.hadoop.hive.metastore.api.Partition.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class HCatPartition {
+ 
+   private static final Logger LOG = LoggerFactory.getLogger(HCatPartition.class);
+diff --git a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatTable.java b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatTable.java
+index c08942c..c604623 100644
+--- a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatTable.java
++++ b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/HCatTable.java
+@@ -27,6 +27,8 @@
+ import com.google.common.collect.Maps;
+ import org.apache.commons.lang.StringUtils;
+ import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.metastore.MetaStoreUtils;
+ import org.apache.hadoop.hive.metastore.TableType;
+@@ -57,6 +59,8 @@
+ /**
+  * The HCatTable is a wrapper around org.apache.hadoop.hive.metastore.api.Table.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class HCatTable {
+   private static final Logger LOG = LoggerFactory.getLogger(HCatTable.class);
+ 
+diff --git a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/MetadataSerializer.java b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/MetadataSerializer.java
+index 2d49981..119dd8e 100644
+--- a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/MetadataSerializer.java
++++ b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/MetadataSerializer.java
+@@ -28,6 +28,8 @@
+ /**
+  * Interface to serialize HCat API elements.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ abstract class MetadataSerializer {
+ 
+   // Prevent construction outside the get() method.
+diff --git a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/repl/Command.java b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/repl/Command.java
+index c479ca3..8b46d67 100644
+--- a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/repl/Command.java
++++ b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/repl/Command.java
+@@ -19,6 +19,8 @@
+ 
+ package org.apache.hive.hcatalog.api.repl;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.io.Writable;
+ 
+ import java.util.List;
+@@ -42,6 +44,8 @@
+  * directories that should be cleaned up after the event for which this
+  * Command is generated is successfully processed.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface Command extends Writable {
+   List<String> get();
+   boolean isRetriable();
+diff --git a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/repl/ReplicationTask.java b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/repl/ReplicationTask.java
+index c5a3028..de44cba 100644
+--- a/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/repl/ReplicationTask.java
++++ b/hcatalog/webhcat/java-client/src/main/java/org/apache/hive/hcatalog/api/repl/ReplicationTask.java
+@@ -19,6 +19,7 @@
+ package org.apache.hive.hcatalog.api.repl;
+ 
+ import com.google.common.base.Function;
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
+ import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ 
+ import org.apache.hadoop.hive.conf.HiveConf;
+@@ -31,7 +32,8 @@
+  * ReplicationTask captures the concept of what it'd take to replicate changes from
+  * one warehouse to another given a notification event that captures what changed.
+  */
+-@InterfaceStability.Evolving
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class ReplicationTask {
+   protected HCatNotificationEvent event;
+   protected StagingDirectoryProvider srcStagingDirProvider = null;
+-- 
+1.7.9.5
+

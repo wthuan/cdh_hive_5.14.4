@@ -1,0 +1,103 @@
+From 7b72751001189b2fb1a60769a7aad63c7bfdb78f Mon Sep 17 00:00:00 2001
+From: Aihua Xu <aihuaxu@apache.org>
+Date: Thu, 16 Mar 2017 11:25:43 -0400
+Subject: [PATCH 1276/1363] CDH-58919: HIVE-15166: Provide beeline option to
+ set the jline history max size (Eric Lin,
+ reviewed by Aihua Xu)
+
+(cherry picked from commit 4f3e2c6145468bafa47834723a766defde3b96b6)
+
+Change-Id: Ib9f3412669f5b5165b8e8bc0e78b42314a4f71b6
+---
+ .../src/java/org/apache/hive/beeline/BeeLine.java  |    1 +
+ .../java/org/apache/hive/beeline/BeeLineOpts.java  |   13 +++++++++++++
+ beeline/src/main/resources/BeeLine.properties      |    1 +
+ .../apache/hive/beeline/TestBeelineArgParsing.java |   12 ++++++++++++
+ 4 files changed, 27 insertions(+)
+
+diff --git a/beeline/src/java/org/apache/hive/beeline/BeeLine.java b/beeline/src/java/org/apache/hive/beeline/BeeLine.java
+index e8fb463..0612b7b 100644
+--- a/beeline/src/java/org/apache/hive/beeline/BeeLine.java
++++ b/beeline/src/java/org/apache/hive/beeline/BeeLine.java
+@@ -1090,6 +1090,7 @@ public void run() {
+             History h = consoleReader.getHistory();
+             if (h instanceof FileHistory) {
+                 try {
++                    ((FileHistory) h).setMaxSize(getOpts().getMaxHistoryRows());
+                     ((FileHistory) h).flush();
+                 } catch (IOException e) {
+                     error(e);
+diff --git a/beeline/src/java/org/apache/hive/beeline/BeeLineOpts.java b/beeline/src/java/org/apache/hive/beeline/BeeLineOpts.java
+index 36cf6c8..099c516 100644
+--- a/beeline/src/java/org/apache/hive/beeline/BeeLineOpts.java
++++ b/beeline/src/java/org/apache/hive/beeline/BeeLineOpts.java
+@@ -45,6 +45,7 @@
+ import jline.TerminalFactory;
+ import jline.console.completer.Completer;
+ import jline.console.completer.StringsCompleter;
++import jline.console.history.MemoryHistory;
+ import org.apache.hadoop.hive.conf.HiveConf;
+ 
+ class BeeLineOpts implements Completer {
+@@ -97,6 +98,7 @@
+ 
+   private final File rcFile = new File(saveDir(), "beeline.properties");
+   private String historyFile = new File(saveDir(), "history").getAbsolutePath();
++  private int maxHistoryRows = MemoryHistory.DEFAULT_MAX_SIZE;
+ 
+   private String scriptFile = null;
+   private String[] initFiles = null;
+@@ -428,6 +430,17 @@ public String getHistoryFile() {
+     return historyFile;
+   }
+ 
++  /**
++   * @param numRows - the number of rows to store in history file
++   */
++  public void setMaxHistoryRows(int numRows) {
++    this.maxHistoryRows = numRows;
++  }
++
++  public int getMaxHistoryRows() {
++    return maxHistoryRows;
++  }
++
+   public void setScriptFile(String scriptFile) {
+     this.scriptFile = scriptFile;
+   }
+diff --git a/beeline/src/main/resources/BeeLine.properties b/beeline/src/main/resources/BeeLine.properties
+index b93d002..e7995a4 100644
+--- a/beeline/src/main/resources/BeeLine.properties
++++ b/beeline/src/main/resources/BeeLine.properties
+@@ -188,6 +188,7 @@ cmd-usage: Usage: java org.apache.hive.cli.beeline.BeeLine \n \
+ \  --delimiterForDSV=DELIMITER     specify the delimiter for delimiter-separated values output format (default: |)\n \
+ \  --isolation=LEVEL               set the transaction isolation level\n \
+ \  --nullemptystring=[true/false]  set to true to get historic behavior of printing null as empty string\n \
++\  --maxHistoryRows=MAXHISTORYROWS The maximum number of rows to store beeline history.\n \
+ \  --help                          display this message\n \
+ \n \
+ \  Example:\n \
+diff --git a/beeline/src/test/org/apache/hive/beeline/TestBeelineArgParsing.java b/beeline/src/test/org/apache/hive/beeline/TestBeelineArgParsing.java
+index e2492c6..1adef1a 100644
+--- a/beeline/src/test/org/apache/hive/beeline/TestBeelineArgParsing.java
++++ b/beeline/src/test/org/apache/hive/beeline/TestBeelineArgParsing.java
+@@ -279,4 +279,16 @@ public void testPropertyFile() throws Exception {
+     Assert.assertTrue(bl.properties.get(0).equals("props"));
+     bl.close();
+   }
++
++  /**
++   * Test maxHistoryRows parameter option.
++   */
++  @Test
++  public void testMaxHistoryRows() throws Exception {
++    TestBeeline bl = new TestBeeline();
++    String args[] = new String[] {"--maxHistoryRows=100"};
++    Assert.assertEquals(0, bl.initArgs(args));
++    Assert.assertTrue(bl.getOpts().getMaxHistoryRows() == 100);
++    bl.close();
++  }
+ }
+-- 
+1.7.9.5
+

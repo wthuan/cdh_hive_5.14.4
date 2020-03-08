@@ -1,0 +1,62 @@
+From fcf989005616d44e941069d5a3740fa7c8bba238 Mon Sep 17 00:00:00 2001
+From: Aihua Xu <aihuaxu@apache.org>
+Date: Tue, 1 Nov 2016 10:51:26 -0400
+Subject: [PATCH 1183/1363] CDH-54345 HIVE-13947: HoS print wrong number for
+ hash table size in map join scenario (Aihua Xu,
+ reviewed by Xuefu Zhang)
+
+Change-Id: Id464126d9f0b015588dad3e2af863ace7a6387fe
+---
+ .../hive/ql/exec/SparkHashTableSinkOperator.java   |   27 +++++++++++---------
+ 1 file changed, 15 insertions(+), 12 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/SparkHashTableSinkOperator.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/SparkHashTableSinkOperator.java
+index 7d51a1b..c75e231 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/SparkHashTableSinkOperator.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/SparkHashTableSinkOperator.java
+@@ -149,14 +149,23 @@ protected void flushToFile(MapJoinPersistableTableContainer tableContainer,
+     replication = (short) Math.max(minReplication, numOfPartitions);
+     htsOperator.console.printInfo(Utilities.now() + "\tDump the side-table for tag: " + tag
+       + " with group count: " + tableContainer.size() + " into file: " + path);
+-    // get the hashtable file and path
+-    OutputStream os = null;
+-    ObjectOutputStream out = null;
+     try {
+-      os = fs.create(path, replication);
+-      out = new ObjectOutputStream(new BufferedOutputStream(os, 4096));
++      // get the hashtable file and path
++      OutputStream os = null;
++      ObjectOutputStream out = null;
+       MapJoinTableContainerSerDe mapJoinTableSerde = htsOperator.mapJoinTableSerdes[tag];
+-      mapJoinTableSerde.persist(out, tableContainer);
++      try {
++        os = fs.create(path, replication);
++        out = new ObjectOutputStream(new BufferedOutputStream(os, 4096));
++        mapJoinTableSerde.persist(out, tableContainer);
++      } finally {
++        if (out != null) {
++          out.close();
++        } else if (os != null) {
++          os.close();
++        }
++      }
++
+       FileStatus status = fs.getFileStatus(path);
+       htsOperator.console.printInfo(Utilities.now() + "\tUploaded 1 File to: " + path
+         + " (" + status.getLen() + " bytes)");
+@@ -169,12 +178,6 @@ protected void flushToFile(MapJoinPersistableTableContainer tableContainer,
+           + tag + ", file " + path, ex);
+       }
+       throw e;
+-    } finally {
+-      if (out != null) {
+-        out.close();
+-      } else if (os != null) {
+-        os.close();
+-      }
+     }
+     tableContainer.clear();
+   }
+-- 
+1.7.9.5
+

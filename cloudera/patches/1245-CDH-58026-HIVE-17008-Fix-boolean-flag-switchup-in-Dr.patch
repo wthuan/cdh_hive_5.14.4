@@ -1,0 +1,39 @@
+From 7a7d1c295411d9688c1ce6cb08cdb6429a6a27c3 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Fri, 11 Aug 2017 12:00:33 +0200
+Subject: [PATCH 1245/1363] CDH-58026 HIVE-17008: Fix boolean flag switchup in
+ DropTableEvent (Dan Burkert, reviewed by Mohit
+ Sabharwal and Peter Vary)
+
+(cherry picked from commit efa5b54542e6ccd1357433f3ae340e94efdd9f6e)
+
+Change-Id: I203bf7935c689d1c9df7beacc6d38aa3b171f8d4
+---
+ .../hadoop/hive/metastore/HiveMetaStore.java       |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java
+index c97245e..19ef05d 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java
+@@ -1647,7 +1647,7 @@ private boolean drop_table_core(final RawStore ms, final String dbname, final St
+             transactionalListenerResponses =
+                 MetaStoreListenerNotifier.notifyEvent(transactionalListeners,
+                                                       EventType.DROP_TABLE,
+-                                                      new DropTableEvent(tbl, deleteData, true, this),
++                                                      new DropTableEvent(tbl, true, deleteData, this),
+                                                       envContext);
+           }
+           success = ms.commitTransaction();
+@@ -1667,7 +1667,7 @@ private boolean drop_table_core(final RawStore ms, final String dbname, final St
+         if (!listeners.isEmpty()) {
+           MetaStoreListenerNotifier.notifyEvent(listeners,
+                                                 EventType.DROP_TABLE,
+-                                                new DropTableEvent(tbl, deleteData, success, this),
++                                                new DropTableEvent(tbl, success, deleteData, this),
+                                                 envContext,
+                                                 transactionalListenerResponses, ms);
+         }
+-- 
+1.7.9.5
+

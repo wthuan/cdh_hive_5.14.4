@@ -1,0 +1,114 @@
+From 10b8c08f7df9968921609d74d54d6b08e38fc6bf Mon Sep 17 00:00:00 2001
+From: Janaki Lahorani <janaki@cloudera.com>
+Date: Thu, 7 Dec 2017 10:27:32 -0800
+Subject: [PATCH 1323/1363] PROPOSED CDH-60254: HIVE-18248: Add parameters
+ that need not change at run time to restricted
+ list.
+
+hadoop.bin.path and yarn.bin.path are added to restricted list in HiveConf.
+
+_hive.tmp_table_space, _hive.hdfs.session.path, and _hive.local.session.path are system parameters holding session specific
+transient information.  These shouldn't be changed by end user.
+
+Change-Id: I8d47a182872018c8ab58453d79bc1b9ba4b69438
+---
+ .../java/org/apache/hadoop/hive/conf/HiveConf.java |    4 +++-
+ .../hadoop/hive/ql/session/SessionState.java       |    7 +++++++
+ .../clientnegative/change_hive_hdfs_session_path.q |    2 ++
+ .../change_hive_local_session_path.q               |    2 ++
+ .../clientnegative/change_hive_tmp_table_space.q   |    2 ++
+ .../change_hive_hdfs_session_path.q.out            |    2 ++
+ .../change_hive_local_session_path.q.out           |    2 ++
+ .../change_hive_tmp_table_space.q.out              |    2 ++
+ 8 files changed, 22 insertions(+), 1 deletion(-)
+ create mode 100644 ql/src/test/queries/clientnegative/change_hive_hdfs_session_path.q
+ create mode 100644 ql/src/test/queries/clientnegative/change_hive_local_session_path.q
+ create mode 100644 ql/src/test/queries/clientnegative/change_hive_tmp_table_space.q
+ create mode 100644 ql/src/test/results/clientnegative/change_hive_hdfs_session_path.q.out
+ create mode 100644 ql/src/test/results/clientnegative/change_hive_local_session_path.q.out
+ create mode 100644 ql/src/test/results/clientnegative/change_hive_tmp_table_space.q.out
+
+diff --git a/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java b/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+index b10fda6..580e932 100644
+--- a/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
++++ b/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+@@ -1984,7 +1984,9 @@ public void setSparkConfigUpdated(boolean isSparkConfigUpdated) {
+         "This setting takes effect only if session idle timeout (hive.server2.idle.session.timeout) and checking\n" +
+         "(hive.server2.session.check.interval) are enabled."),
+     HIVE_CONF_RESTRICTED_LIST("hive.conf.restricted.list",
+-        "hive.security.authenticator.manager,hive.security.authorization.manager,hive.users.in.admin.role",
++        "hive.security.authenticator.manager,hive.security.authorization.manager,hive.users.in.admin.role,"+
++        "hadoop.bin.path,"+
++        "yarn.bin.path",
+         "Comma separated list of configuration options which are immutable at runtime"),
+     HIVE_CONF_HIDDEN_LIST("hive.conf.hidden.list",
+         METASTOREPWD.varname + "," + HIVE_SERVER2_SSL_KEYSTORE_PASSWORD.varname
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/session/SessionState.java b/ql/src/java/org/apache/hadoop/hive/ql/session/SessionState.java
+index 657dbf9..69dd287 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/session/SessionState.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/session/SessionState.java
+@@ -643,6 +643,13 @@ private void createSessionDirs(String userName) throws IOException {
+     // Don't register with deleteOnExit
+     createPath(conf, hdfsTmpTableSpace, scratchDirPermission, false, false);
+     conf.set(TMP_TABLE_SPACE_KEY, hdfsTmpTableSpace.toUri().toString());
++
++    // _hive.tmp_table_space, _hive.hdfs.session.path, and _hive.local.session.path are respectively
++    // saved in hdfsTmpTableSpace, hdfsSessionPath and localSessionPath.  Saving them as conf
++    // variables is useful to expose them to end users.  But, end users shouldn't change them.
++    // Adding them to restricted list.
++    conf.addToRestrictList(
++        LOCAL_SESSION_PATH_KEY + "," + HDFS_SESSION_PATH_KEY + "," + TMP_TABLE_SPACE_KEY);
+   }
+ 
+   /**
+diff --git a/ql/src/test/queries/clientnegative/change_hive_hdfs_session_path.q b/ql/src/test/queries/clientnegative/change_hive_hdfs_session_path.q
+new file mode 100644
+index 0000000..d3f3a21
+--- /dev/null
++++ b/ql/src/test/queries/clientnegative/change_hive_hdfs_session_path.q
+@@ -0,0 +1,2 @@
++set _hive.hdfs.session.path;
++set _hive.hdfs.session.path=foo;
+diff --git a/ql/src/test/queries/clientnegative/change_hive_local_session_path.q b/ql/src/test/queries/clientnegative/change_hive_local_session_path.q
+new file mode 100644
+index 0000000..6477862
+--- /dev/null
++++ b/ql/src/test/queries/clientnegative/change_hive_local_session_path.q
+@@ -0,0 +1,2 @@
++set _hive.local.session.path;
++set _hive.local.session.path=foo;
+diff --git a/ql/src/test/queries/clientnegative/change_hive_tmp_table_space.q b/ql/src/test/queries/clientnegative/change_hive_tmp_table_space.q
+new file mode 100644
+index 0000000..6fb82f5
+--- /dev/null
++++ b/ql/src/test/queries/clientnegative/change_hive_tmp_table_space.q
+@@ -0,0 +1,2 @@
++set _hive.tmp_table_space;
++set _hive.tmp_table_space=foo;
+diff --git a/ql/src/test/results/clientnegative/change_hive_hdfs_session_path.q.out b/ql/src/test/results/clientnegative/change_hive_hdfs_session_path.q.out
+new file mode 100644
+index 0000000..dd5cef7
+--- /dev/null
++++ b/ql/src/test/results/clientnegative/change_hive_hdfs_session_path.q.out
+@@ -0,0 +1,2 @@
++#### A masked pattern was here ####
++Query returned non-zero code: 1, cause: Cannot modify _hive.hdfs.session.path at runtime. It is in the listof parameters that can't be modified at runtime
+diff --git a/ql/src/test/results/clientnegative/change_hive_local_session_path.q.out b/ql/src/test/results/clientnegative/change_hive_local_session_path.q.out
+new file mode 100644
+index 0000000..ab3edeb
+--- /dev/null
++++ b/ql/src/test/results/clientnegative/change_hive_local_session_path.q.out
+@@ -0,0 +1,2 @@
++#### A masked pattern was here ####
++Query returned non-zero code: 1, cause: Cannot modify _hive.local.session.path at runtime. It is in the listof parameters that can't be modified at runtime
+diff --git a/ql/src/test/results/clientnegative/change_hive_tmp_table_space.q.out b/ql/src/test/results/clientnegative/change_hive_tmp_table_space.q.out
+new file mode 100644
+index 0000000..689d91b
+--- /dev/null
++++ b/ql/src/test/results/clientnegative/change_hive_tmp_table_space.q.out
+@@ -0,0 +1,2 @@
++#### A masked pattern was here ####
++Query returned non-zero code: 1, cause: Cannot modify _hive.tmp_table_space at runtime. It is in the listof parameters that can't be modified at runtime
+-- 
+1.7.9.5
+

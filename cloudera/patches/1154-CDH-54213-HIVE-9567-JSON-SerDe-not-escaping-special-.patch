@@ -1,0 +1,73 @@
+From 3e1e73fea1ac644c99efea224c44eb8e3cad1b25 Mon Sep 17 00:00:00 2001
+From: Jason Dere <jdere@apache.org>
+Date: Fri, 6 Feb 2015 01:54:20 +0000
+Subject: [PATCH 1154/1363] CDH-54213 HIVE-9567: JSON SerDe not escaping
+ special chars when writing char/varchar data
+ (Jason Dere, reviewed by Thejas Nair)
+
+git-svn-id: https://svn.apache.org/repos/asf/hive/trunk@1657738 13f79535-47bb-0310-9956-ffa450edef68
+(cherry picked from commit e31f7ad492a9439b2f87771bac18e272c47db757)
+
+Change-Id: Ie1e79ec1083bca6550496718fb4305d11e32c613
+---
+ .../org/apache/hive/hcatalog/data/JsonSerDe.java   |   15 ++++++++++-----
+ .../apache/hive/hcatalog/data/TestJsonSerDe.java   |    6 +++---
+ 2 files changed, 13 insertions(+), 8 deletions(-)
+
+diff --git a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/JsonSerDe.java b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/JsonSerDe.java
+index fdf8963..e6ec011 100644
+--- a/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/JsonSerDe.java
++++ b/hcatalog/core/src/main/java/org/apache/hive/hcatalog/data/JsonSerDe.java
+@@ -517,15 +517,20 @@ private static void buildJSONString(StringBuilder sb, Object o, ObjectInspector
+         case DECIMAL:
+           sb.append(((HiveDecimalObjectInspector)poi).getPrimitiveJavaObject(o));
+           break;
+-        case VARCHAR:
+-          appendWithQuotes(sb, 
+-                  ((HiveVarcharObjectInspector)poi).getPrimitiveJavaObject(o).toString());
++        case VARCHAR: {
++          String s = SerDeUtils.escapeString(
++              ((HiveVarcharObjectInspector) poi).getPrimitiveJavaObject(o).toString());
++          appendWithQuotes(sb, s);
+           break;
+-        case CHAR:
++        }
++        case CHAR: {
+           //this should use HiveChar.getPaddedValue() but it's protected; currently (v0.13)
+           // HiveChar.toString() returns getPaddedValue()
+-          appendWithQuotes(sb, ((HiveCharObjectInspector)poi).getPrimitiveJavaObject(o).toString());
++          String s = SerDeUtils.escapeString(
++              ((HiveCharObjectInspector) poi).getPrimitiveJavaObject(o).toString());
++          appendWithQuotes(sb, s);
+           break;
++        }
+         default:
+           throw new RuntimeException("Unknown primitive type: " + poi.getPrimitiveCategory());
+         }
+diff --git a/hcatalog/core/src/test/java/org/apache/hive/hcatalog/data/TestJsonSerDe.java b/hcatalog/core/src/test/java/org/apache/hive/hcatalog/data/TestJsonSerDe.java
+index b4a810a..2947c43 100644
+--- a/hcatalog/core/src/test/java/org/apache/hive/hcatalog/data/TestJsonSerDe.java
++++ b/hcatalog/core/src/test/java/org/apache/hive/hcatalog/data/TestJsonSerDe.java
+@@ -56,7 +56,7 @@
+     rlist.add(new Long(1000L));
+     rlist.add(new Double(5.3D));
+     rlist.add(new Float(2.39F));
+-    rlist.add(new String("hcat and hadoop"));
++    rlist.add(new String("hcat\nand\nhadoop"));
+     rlist.add(null);
+ 
+     List<Object> innerStruct = new ArrayList<Object>(2);
+@@ -94,8 +94,8 @@
+     c1.add(c1_1);
+     rlist.add(c1);
+     rlist.add(HiveDecimal.create(new BigDecimal("123.45")));//prec 5, scale 2
+-    rlist.add(new HiveChar("hive_char", 10));
+-    rlist.add(new HiveVarchar("hive_varchar", 20));
++    rlist.add(new HiveChar("hive\nchar", 10));
++    rlist.add(new HiveVarchar("hive\nvarchar", 20));
+     rlist.add(Date.valueOf("2014-01-07"));
+     rlist.add(new Timestamp(System.currentTimeMillis()));
+ 
+-- 
+1.7.9.5
+

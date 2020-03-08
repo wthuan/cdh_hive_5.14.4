@@ -1,0 +1,280 @@
+From 98c7b9da57e56883a43956f5b79fbf1e4d636f3d Mon Sep 17 00:00:00 2001
+From: Barna Zsombor Klara <zsombor.klara@cloudera.com>
+Date: Fri, 6 Oct 2017 15:29:30 +0200
+Subject: [PATCH 1308/1363] CDH-60121: HIVE-17078: Add more logs to
+ MapredLocalTask (Yibing Shi via Barna Zsombor
+ Klara)
+
+(cherry picked from commit c1f3d9a48b6122b3b5e5bf03ec1e524c5102f3b2)
+
+Change-Id: I74c6c61ad688e369738782f4806e91f805d1f5f8
+---
+ .../hadoop/hive/common/log/LogRedirector.java      |   99 ++++++++++++++++++++
+ .../hadoop/hive/ql/exec/mr/MapredLocalTask.java    |   35 ++++++-
+ .../test/results/clientpositive/auto_join25.q.out  |    4 +
+ .../auto_join_without_localtask.q.out              |    2 +
+ .../infer_bucket_sort_convert_join.q.out           |    1 +
+ .../test/results/clientpositive/mapjoin_hook.q.out |    3 +
+ 6 files changed, 140 insertions(+), 4 deletions(-)
+ create mode 100644 common/src/java/org/apache/hadoop/hive/common/log/LogRedirector.java
+
+diff --git a/common/src/java/org/apache/hadoop/hive/common/log/LogRedirector.java b/common/src/java/org/apache/hadoop/hive/common/log/LogRedirector.java
+new file mode 100644
+index 0000000..e355534
+--- /dev/null
++++ b/common/src/java/org/apache/hadoop/hive/common/log/LogRedirector.java
+@@ -0,0 +1,99 @@
++/**
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.hadoop.hive.common.log;
++
++import org.apache.commons.logging.Log;
++
++import java.io.BufferedReader;
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.InputStreamReader;
++
++import java.util.List;
++
++/**
++ * Class used to redirect output read from a stream to a logger
++ */
++public class LogRedirector implements Runnable {
++
++  private static final long MAX_ERR_LOG_LINES_FOR_RPC = 1000;
++
++  public interface LogSourceCallback {
++    boolean isAlive();
++  }
++
++  private final Log logger;
++  private final BufferedReader in;
++  private final LogSourceCallback callback;
++  private List<String> errLogs;
++  private int numErrLogLines = 0;
++
++  public LogRedirector(InputStream in, Log logger, LogSourceCallback callback) {
++    this.in = new BufferedReader(new InputStreamReader(in));
++    this.callback = callback;
++    this.logger = logger;
++  }
++
++  public LogRedirector(InputStream in, Log logger, List<String> errLogs,
++                       LogSourceCallback callback) {
++    this.in = new BufferedReader(new InputStreamReader(in));
++    this.errLogs = errLogs;
++    this.callback = callback;
++    this.logger = logger;
++  }
++
++  @Override
++  public void run() {
++    try {
++      String line = null;
++      while ((line = in.readLine()) != null) {
++        logger.info(line);
++        if (errLogs != null) {
++          if (numErrLogLines++ < MAX_ERR_LOG_LINES_FOR_RPC) {
++            errLogs.add(line);
++          }
++        }
++      }
++    } catch (IOException e) {
++      if (callback.isAlive()) {
++        logger.warn("I/O error in redirector thread.", e);
++      } else {
++        // When stopping the process we are redirecting from,
++        // the streams might be closed during reading.
++        // We should not log the related exceptions in a visible level
++        // as they might mislead the user.
++        logger.debug("I/O error in redirector thread while stopping the remote driver", e);
++      }
++    } catch (Exception e) {
++      logger.warn("Error in redirector thread.", e);
++    }
++  }
++
++  /**
++   * Start the logredirector in a new thread
++   * @param name name of the new thread
++   * @param redirector redirector to start
++   */
++  public static void redirect(String name, LogRedirector redirector) {
++    Thread thread = new Thread(redirector);
++    thread.setName(name);
++    thread.setDaemon(true);
++    thread.start();
++  }
++
++}
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/mr/MapredLocalTask.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/mr/MapredLocalTask.java
+index d078457..ad4b514 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/mr/MapredLocalTask.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/mr/MapredLocalTask.java
+@@ -45,6 +45,7 @@
+ import org.apache.hadoop.fs.Path;
+ import org.apache.hadoop.hive.common.LogUtils;
+ import org.apache.hadoop.hive.common.io.CachingPrintStream;
++import org.apache.hadoop.hive.common.log.LogRedirector;
+ import org.apache.hadoop.hive.common.metrics.common.Metrics;
+ import org.apache.hadoop.hive.common.metrics.common.MetricsConstant;
+ import org.apache.hadoop.hive.conf.HiveConf;
+@@ -79,6 +80,7 @@
+ import org.apache.hadoop.mapred.JobConf;
+ import org.apache.hadoop.security.UserGroupInformation;
+ import org.apache.hadoop.util.ReflectionUtils;
++import org.apache.hive.common.util.HiveStringUtils;
+ import org.apache.hive.common.util.StreamPrinter;
+ 
+ /**
+@@ -321,6 +323,26 @@ public int executeInChildVM(DriverContext driverContext) {
+       // Run ExecDriver in another JVM
+       executor = Runtime.getRuntime().exec(cmdLine, env, new File(workDir));
+ 
++      final LogRedirector.LogSourceCallback callback = new LogRedirector.LogSourceCallback() {
++        @Override
++        public boolean isAlive() {
++          // TODO change to executor.isAlive() with java8
++          try {
++            executor.exitValue();
++            return false;
++          } catch(IllegalThreadStateException e) {
++            return true;
++          }
++        }
++      };
++
++      LogRedirector.redirect(
++          Thread.currentThread().getName() + "-LocalTask-" + getName() + "-stdout",
++          new LogRedirector(executor.getInputStream(), LOG, callback));
++      LogRedirector.redirect(
++          Thread.currentThread().getName() + "-LocalTask-" + getName() + "-stderr",
++          new LogRedirector(executor.getErrorStream(), LOG, callback));
++
+       CachingPrintStream errPrintStream = new CachingPrintStream(System.err);
+ 
+       StreamPrinter outPrinter;
+@@ -390,14 +412,19 @@ public int executeInProcess(DriverContext driverContext) {
+       console.printInfo(Utilities.now() + "\tEnd of local task; Time Taken: "
+           + Utilities.showTime(elapsed) + " sec.");
+     } catch (Throwable throwable) {
++      int retVal;
++      String message;
+       if (throwable instanceof OutOfMemoryError
+           || (throwable instanceof MapJoinMemoryExhaustionException)) {
+-        l4j.error("Hive Runtime Error: Map local work exhausted memory", throwable);
+-        return 3;
++        message = "Hive Runtime Error: Map local work exhausted memory";
++        retVal = 3;
+       } else {
+-        l4j.error("Hive Runtime Error: Map local work failed", throwable);
+-        return 2;
++        message = "Hive Runtime Error: Map local work failed";
++        retVal = 2;
+       }
++      l4j.error(message, throwable);
++      console.printError(message, HiveStringUtils.stringifyException(throwable));
++      return retVal;
+     }
+     return 0;
+   }
+diff --git a/ql/src/test/results/clientpositive/auto_join25.q.out b/ql/src/test/results/clientpositive/auto_join25.q.out
+index 80ef811..f2ca3b4 100644
+--- a/ql/src/test/results/clientpositive/auto_join25.q.out
++++ b/ql/src/test/results/clientpositive/auto_join25.q.out
+@@ -18,6 +18,7 @@ PREHOOK: Input: default@srcpart@ds=2008-04-08/hr=12
+ PREHOOK: Input: default@srcpart@ds=2008-04-09/hr=11
+ PREHOOK: Input: default@srcpart@ds=2008-04-09/hr=12
+ PREHOOK: Output: default@dest1
++Hive Runtime Error: Map local work exhausted memory
+ FAILED: Execution Error, return code 3 from org.apache.hadoop.hive.ql.exec.mr.MapredLocalTask
+ ATTEMPT: Execute BackupTask: org.apache.hadoop.hive.ql.exec.mr.MapRedTask
+ POSTHOOK: query: FROM srcpart src1 JOIN src src2 ON (src1.key = src2.key)
+@@ -62,8 +63,10 @@ INSERT OVERWRITE TABLE dest_j2 SELECT src1.key, src3.value
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@src
+ PREHOOK: Output: default@dest_j2
++Hive Runtime Error: Map local work exhausted memory
+ FAILED: Execution Error, return code 3 from org.apache.hadoop.hive.ql.exec.mr.MapredLocalTask
+ ATTEMPT: Execute BackupTask: org.apache.hadoop.hive.ql.exec.mr.MapRedTask
++Hive Runtime Error: Map local work exhausted memory
+ FAILED: Execution Error, return code 3 from org.apache.hadoop.hive.ql.exec.mr.MapredLocalTask
+ ATTEMPT: Execute BackupTask: org.apache.hadoop.hive.ql.exec.mr.MapRedTask
+ POSTHOOK: query: FROM src src1 JOIN src src2 ON (src1.key = src2.key) JOIN src src3 ON (src1.key + src2.key = src3.key)
+@@ -105,6 +108,7 @@ INSERT OVERWRITE TABLE dest_j1 SELECT src1.key, src2.value
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@src
+ PREHOOK: Output: default@dest_j1
++Hive Runtime Error: Map local work exhausted memory
+ FAILED: Execution Error, return code 3 from org.apache.hadoop.hive.ql.exec.mr.MapredLocalTask
+ ATTEMPT: Execute BackupTask: org.apache.hadoop.hive.ql.exec.mr.MapRedTask
+ POSTHOOK: query: FROM src src1 JOIN src src2 ON (src1.key = src2.key)
+diff --git a/ql/src/test/results/clientpositive/auto_join_without_localtask.q.out b/ql/src/test/results/clientpositive/auto_join_without_localtask.q.out
+index 6efa78d..70ae1c5 100644
+--- a/ql/src/test/results/clientpositive/auto_join_without_localtask.q.out
++++ b/ql/src/test/results/clientpositive/auto_join_without_localtask.q.out
+@@ -1054,8 +1054,10 @@ PREHOOK: query: select a.* from src a join src b on a.key=b.key join src c on a.
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@src
+ #### A masked pattern was here ####
++Hive Runtime Error: Map local work exhausted memory
+ FAILED: Execution Error, return code 3 from org.apache.hadoop.hive.ql.exec.mr.MapredLocalTask
+ ATTEMPT: Execute BackupTask: org.apache.hadoop.hive.ql.exec.mr.MapRedTask
++Hive Runtime Error: Map local work exhausted memory
+ FAILED: Execution Error, return code 3 from org.apache.hadoop.hive.ql.exec.mr.MapredLocalTask
+ ATTEMPT: Execute BackupTask: org.apache.hadoop.hive.ql.exec.mr.MapRedTask
+ POSTHOOK: query: select a.* from src a join src b on a.key=b.key join src c on a.value=c.value where a.key>100 order by a.key, a.value limit 40
+diff --git a/ql/src/test/results/clientpositive/infer_bucket_sort_convert_join.q.out b/ql/src/test/results/clientpositive/infer_bucket_sort_convert_join.q.out
+index 5a759cd..d05e7dc 100644
+--- a/ql/src/test/results/clientpositive/infer_bucket_sort_convert_join.q.out
++++ b/ql/src/test/results/clientpositive/infer_bucket_sort_convert_join.q.out
+@@ -64,6 +64,7 @@ SELECT a.key, b.value FROM src a JOIN src b ON a.key = b.key
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@src
+ PREHOOK: Output: default@test_table@part=1
++Hive Runtime Error: Map local work exhausted memory
+ FAILED: Execution Error, return code 3 from org.apache.hadoop.hive.ql.exec.mr.MapredLocalTask
+ ATTEMPT: Execute BackupTask: org.apache.hadoop.hive.ql.exec.mr.MapRedTask
+ POSTHOOK: query: INSERT OVERWRITE TABLE test_table PARTITION (part = '1') 
+diff --git a/ql/src/test/results/clientpositive/mapjoin_hook.q.out b/ql/src/test/results/clientpositive/mapjoin_hook.q.out
+index 8a6743c..035c2f2 100644
+--- a/ql/src/test/results/clientpositive/mapjoin_hook.q.out
++++ b/ql/src/test/results/clientpositive/mapjoin_hook.q.out
+@@ -38,6 +38,7 @@ PREHOOK: Input: default@srcpart@ds=2008-04-08/hr=12
+ PREHOOK: Input: default@srcpart@ds=2008-04-09/hr=11
+ PREHOOK: Input: default@srcpart@ds=2008-04-09/hr=12
+ PREHOOK: Output: default@dest1
++Hive Runtime Error: Map local work exhausted memory
+ FAILED: Execution Error, return code 3 from org.apache.hadoop.hive.ql.exec.mr.MapredLocalTask
+ ATTEMPT: Execute BackupTask: org.apache.hadoop.hive.ql.exec.mr.MapRedTask
+ [MapJoinCounter PostHook] COMMON_JOIN: 0 HINTED_MAPJOIN: 0 HINTED_MAPJOIN_LOCAL: 0 CONVERTED_MAPJOIN: 0 CONVERTED_MAPJOIN_LOCAL: 1 BACKUP_COMMON_JOIN: 1
+@@ -51,8 +52,10 @@ INSERT OVERWRITE TABLE dest1 SELECT src1.key, src3.value
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@src
+ PREHOOK: Output: default@dest1
++Hive Runtime Error: Map local work exhausted memory
+ FAILED: Execution Error, return code 3 from org.apache.hadoop.hive.ql.exec.mr.MapredLocalTask
+ ATTEMPT: Execute BackupTask: org.apache.hadoop.hive.ql.exec.mr.MapRedTask
++Hive Runtime Error: Map local work exhausted memory
+ FAILED: Execution Error, return code 3 from org.apache.hadoop.hive.ql.exec.mr.MapredLocalTask
+ ATTEMPT: Execute BackupTask: org.apache.hadoop.hive.ql.exec.mr.MapRedTask
+ [MapJoinCounter PostHook] COMMON_JOIN: 0 HINTED_MAPJOIN: 0 HINTED_MAPJOIN_LOCAL: 0 CONVERTED_MAPJOIN: 0 CONVERTED_MAPJOIN_LOCAL: 2 BACKUP_COMMON_JOIN: 2
+-- 
+1.7.9.5
+

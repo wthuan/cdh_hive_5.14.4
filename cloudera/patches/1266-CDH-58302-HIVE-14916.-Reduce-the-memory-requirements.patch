@@ -1,0 +1,71 @@
+From 9002ff590d58ccfa7d3c921b630bf4227e4a849a Mon Sep 17 00:00:00 2001
+From: Siddharth Seth <sseth@apache.org>
+Date: Thu, 13 Oct 2016 23:36:02 -0700
+Subject: [PATCH 1266/1363] CDH-58302: HIVE-14916. Reduce the memory
+ requirements for Spark tests. (Dapeng Sun,
+ reviewed by Ferdinand Xu, Siddharth Seth)
+
+(cherry picked from commit 41c38ddc056aaae78fb5bb33632d0d02c0e288fb)
+
+Change-Id: I0459617dc2f4daf64d6ce9daf79c570418c5b859
+---
+ data/conf/spark/yarn-client/hive-site.xml          |    4 ++--
+ .../apache/hadoop/hive/shims/Hadoop23Shims.java    |    6 ++++++
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/data/conf/spark/yarn-client/hive-site.xml b/data/conf/spark/yarn-client/hive-site.xml
+index ba05b6f..283c729 100644
+--- a/data/conf/spark/yarn-client/hive-site.xml
++++ b/data/conf/spark/yarn-client/hive-site.xml
+@@ -232,7 +232,7 @@
+ 
+ <property>
+   <name>spark.executor.memory</name>
+-  <value>1g</value>
++  <value>512m</value>
+ </property>
+ 
+ <property>
+@@ -242,7 +242,7 @@
+ 
+ <property>
+   <name>spark.driver.memory</name>
+-  <value>1g</value>
++  <value>512m</value>
+ </property>
+ 
+ <property>
+diff --git a/shims/0.23/src/main/java/org/apache/hadoop/hive/shims/Hadoop23Shims.java b/shims/0.23/src/main/java/org/apache/hadoop/hive/shims/Hadoop23Shims.java
+index ba889ac..57e4088 100644
+--- a/shims/0.23/src/main/java/org/apache/hadoop/hive/shims/Hadoop23Shims.java
++++ b/shims/0.23/src/main/java/org/apache/hadoop/hive/shims/Hadoop23Shims.java
+@@ -20,6 +20,7 @@
+ import java.io.FileNotFoundException;
+ import java.io.IOException;
+ import java.lang.reflect.Constructor;
++import java.lang.reflect.InvocationTargetException;
+ import java.lang.reflect.Method;
+ import java.net.InetSocketAddress;
+ import java.net.MalformedURLException;
+@@ -36,6 +37,7 @@
+ import java.util.TreeMap;
+ 
+ import com.google.common.annotations.VisibleForTesting;
++import javax.security.auth.Subject;
+ import org.apache.commons.lang.StringUtils;
+ import org.apache.hadoop.conf.Configuration;
+ import org.apache.hadoop.crypto.key.KeyProvider;
+@@ -525,6 +527,10 @@ public MiniSparkShim(Configuration conf, int numberOfTaskTrackers,
+       conf.set("yarn.resourcemanager.scheduler.class", "org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.FairScheduler");
+       // disable resource monitoring, although it should be off by default
+       conf.setBoolean(YarnConfiguration.YARN_MINICLUSTER_CONTROL_RESOURCE_MONITORING, false);
++      // YARN-3086 is not yet backported to CDH - Asked for backpot CDH-58325
++      // conf.setInt(YarnConfiguration.YARN_MINICLUSTER_NM_PMEM_MB, 2048);
++      conf.setInt(YarnConfiguration.RM_SCHEDULER_MINIMUM_ALLOCATION_MB, 512);
++      conf.setInt(YarnConfiguration.RM_SCHEDULER_MAXIMUM_ALLOCATION_MB, 2048);
+       configureImpersonation(conf);
+       mr.init(conf);
+       mr.start();
+-- 
+1.7.9.5
+

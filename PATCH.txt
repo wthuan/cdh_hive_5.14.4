@@ -1,0 +1,2 @@
+PATCH-3578
+    HIVE-6384: Implement all Hive data types in Parquet

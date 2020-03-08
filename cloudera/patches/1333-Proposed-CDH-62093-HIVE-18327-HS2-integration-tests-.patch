@@ -1,0 +1,310 @@
+From 1f8590fe1b643fc5dd19fb07a87b601f43a45b9d Mon Sep 17 00:00:00 2001
+From: Aihua Xu <axu@cloudera.com>
+Date: Thu, 21 Dec 2017 11:11:12 -0800
+Subject: [PATCH 1333/1363] Proposed CDH-62093: HIVE-18327: HS2 integration
+ tests are consistently failing.   Add the test
+ configuration krb5.conf for miniKDC tests and
+ remove the unnecessary HiveConf from MiniKDC
+ constructor.
+
+Change-Id: I34b629a94c4a662310a6c19be401857fc22da140
+---
+ data/conf/krb5.conf                                |   25 ++++++++++++++++++++
+ .../hive/minikdc/JdbcWithMiniKdcSQLAuthTest.java   |   11 ++++-----
+ .../java/org/apache/hive/minikdc/MiniHiveKdc.java  |    8 +++----
+ .../apache/hive/minikdc/TestHiveAuthFactory.java   |    2 +-
+ .../hive/minikdc/TestHs2HooksWithMiniKdc.java      |    2 +-
+ .../minikdc/TestJdbcNonKrbSASLWithMiniKdc.java     |    3 ++-
+ .../hive/minikdc/TestJdbcWithDBTokenStore.java     |    4 +++-
+ .../minikdc/TestJdbcWithDBTokenStoreNoDoAs.java    |    3 ++-
+ .../apache/hive/minikdc/TestJdbcWithMiniKdc.java   |    3 ++-
+ .../minikdc/TestJdbcWithMiniKdcSQLAuthBinary.java  |    4 +---
+ .../minikdc/TestJdbcWithMiniKdcSQLAuthHttp.java    |    4 +---
+ .../org/apache/hive/minikdc/TestMiniHiveKdc.java   |    5 +---
+ 12 files changed, 47 insertions(+), 27 deletions(-)
+ create mode 100644 data/conf/krb5.conf
+
+diff --git a/data/conf/krb5.conf b/data/conf/krb5.conf
+new file mode 100644
+index 0000000..60fc7e4
+--- /dev/null
++++ b/data/conf/krb5.conf
+@@ -0,0 +1,25 @@
++#
++# Licensed to the Apache Software Foundation (ASF) under one
++# or more contributor license agreements.  See the NOTICE file
++# distributed with this work for additional information
++# regarding copyright ownership.  The ASF licenses this file
++# to you under the Apache License, Version 2.0 (the
++# "License"); you may not use this file except in compliance
++# with the License.  You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++#
++[libdefaults]
++    default_realm = EXAMPLE.COM
++    udp_preference_limit = 1
++
++[realms]
++    EXAMPLE.COM = {
++        kdc = localhost:57145
++    }
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/JdbcWithMiniKdcSQLAuthTest.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/JdbcWithMiniKdcSQLAuthTest.java
+index 0f0ae54..afd9ea4 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/JdbcWithMiniKdcSQLAuthTest.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/JdbcWithMiniKdcSQLAuthTest.java
+@@ -43,9 +43,12 @@
+   private static MiniHS2 miniHS2 = null;
+   private static MiniHiveKdc miniHiveKdc = null;
+   private Connection hs2Conn;
+-  protected static HiveConf hiveConf = new HiveConf();
+ 
+-  public static void beforeTestBase() throws Exception {
++  public static void beforeTestBase(String serverMode) throws Exception {
++    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc();
++
++    HiveConf hiveConf = new HiveConf();
++    hiveConf.setVar(ConfVars.HIVE_SERVER2_TRANSPORT_MODE, serverMode);
+     System.err.println("Testing using HS2 mode:"
+         + hiveConf.getVar(ConfVars.HIVE_SERVER2_TRANSPORT_MODE));
+ 
+@@ -58,7 +61,6 @@ public static void beforeTestBase() throws Exception {
+     hiveConf.setBoolVar(ConfVars.HIVE_SUPPORT_CONCURRENCY, false);
+     hiveConf.setBoolVar(ConfVars.HIVE_SERVER2_ENABLE_DOAS, false);
+ 
+-    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc(hiveConf);
+     miniHS2 = MiniHiveKdc.getMiniHS2WithKerb(miniHiveKdc, hiveConf);
+     miniHS2.start(new HashMap<String, String>());
+ 
+@@ -146,7 +148,4 @@ private Connection getConnection(String userName) throws Exception {
+     miniHiveKdc.loginUser(userName);
+     return DriverManager.getConnection(miniHS2.getJdbcURL());
+   }
+-
+-
+-
+ }
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/MiniHiveKdc.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/MiniHiveKdc.java
+index ff385ca..679d02c 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/MiniHiveKdc.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/MiniHiveKdc.java
+@@ -55,7 +55,6 @@
+ 
+   private final MiniKdc miniKdc;
+   private final File workDir;
+-  private final Configuration conf;
+   private final Map<String, String> userPrincipals =
+       new HashMap<String, String>();
+   private final Properties kdcConf = MiniKdc.createConf();
+@@ -79,16 +78,15 @@ public void cacheGroupsAdd(List<String> groups) throws IOException {
+     }
+   }
+ 
+-  public static MiniHiveKdc getMiniHiveKdc (Configuration conf) throws Exception {
+-    return new MiniHiveKdc(conf);
++  public static MiniHiveKdc getMiniHiveKdc () throws Exception {
++    return new MiniHiveKdc();
+   }
+ 
+-  public MiniHiveKdc(Configuration conf)
++  public MiniHiveKdc()
+       throws Exception {
+     File baseDir =  Files.createTempDir();
+     baseDir.deleteOnExit();
+     workDir = new File (baseDir, "HiveMiniKdc");
+-    this.conf = conf;
+ 
+     /**
+      *  Hadoop security classes read the default realm via static initialization,
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestHiveAuthFactory.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestHiveAuthFactory.java
+index 0405ff3..3a698bd 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestHiveAuthFactory.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestHiveAuthFactory.java
+@@ -32,8 +32,8 @@
+ 
+   @BeforeClass
+   public static void setUp() throws Exception {
++    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc();
+     hiveConf = new HiveConf();
+-    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc(hiveConf);
+   }
+ 
+   @AfterClass
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestHs2HooksWithMiniKdc.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestHs2HooksWithMiniKdc.java
+index e089aa9..27a353b 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestHs2HooksWithMiniKdc.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestHs2HooksWithMiniKdc.java
+@@ -55,8 +55,8 @@ public static void setUpBeforeClass() throws Exception {
+     confOverlay.put(ConfVars.SEMANTIC_ANALYZER_HOOK.varname,
+         SemanticAnalysisHook.class.getName());
+ 
++    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc();
+     HiveConf hiveConf = new HiveConf();
+-    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc(hiveConf);
+     miniHS2 = MiniHiveKdc.getMiniHS2WithKerb(miniHiveKdc, hiveConf);
+     miniHS2.start(confOverlay);
+   }
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcNonKrbSASLWithMiniKdc.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcNonKrbSASLWithMiniKdc.java
+index e5765ed..139616f 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcNonKrbSASLWithMiniKdc.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcNonKrbSASLWithMiniKdc.java
+@@ -52,13 +52,14 @@ public void Authenticate(String user, String password) throws AuthenticationExce
+ 
+   @BeforeClass
+   public static void beforeTest() throws Exception {
++    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc();
++
+     Class.forName(MiniHS2.getJdbcDriverName());
+     confOverlay.put(ConfVars.HIVE_SERVER2_SESSION_HOOK.varname,
+         SessionHookTest.class.getName());
+     confOverlay.put(ConfVars.HIVE_SERVER2_CUSTOM_AUTHENTICATION_CLASS.varname,
+         CustomAuthenticator.class.getName());
+     HiveConf hiveConf = new HiveConf();
+-    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc(hiveConf);
+     miniHS2 = MiniHiveKdc.getMiniHS2WithKerb(miniHiveKdc, hiveConf, "CUSTOM");
+     miniHS2.start(confOverlay);
+   }
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStore.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStore.java
+index 014d64f..c1405fa 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStore.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStore.java
+@@ -32,13 +32,15 @@
+ 
+   @BeforeClass
+   public static void beforeTest() throws Exception {
++    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc();
++
+     Class.forName(MiniHS2.getJdbcDriverName());
+     confOverlay.put(ConfVars.HIVE_SERVER2_SESSION_HOOK.varname,
+         SessionHookTest.class.getName());
+ 
+     HiveConf hiveConf = new HiveConf();
+     hiveConf.setVar(ConfVars.METASTORE_CLUSTER_DELEGATION_TOKEN_STORE_CLS, "org.apache.hadoop.hive.thrift.DBTokenStore");
+-    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc(hiveConf);
++
+     miniHS2 = MiniHiveKdc.getMiniHS2WithKerbWithRemoteHMSWithKerb(miniHiveKdc, hiveConf);
+     miniHS2.start(confOverlay);
+     String metastorePrincipal = miniHS2.getConfProperty(ConfVars.METASTORE_KERBEROS_PRINCIPAL.varname);
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStoreNoDoAs.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStoreNoDoAs.java
+index 837bdbf..3892074 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStoreNoDoAs.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStoreNoDoAs.java
+@@ -32,6 +32,8 @@
+ 
+   @BeforeClass
+   public static void beforeTest() throws Exception {
++    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc();
++
+     Class.forName(MiniHS2.getJdbcDriverName());
+     confOverlay.put(ConfVars.HIVE_SERVER2_SESSION_HOOK.varname,
+         SessionHookTest.class.getName());
+@@ -39,7 +41,6 @@ public static void beforeTest() throws Exception {
+     HiveConf hiveConf = new HiveConf();
+     hiveConf.setVar(ConfVars.METASTORE_CLUSTER_DELEGATION_TOKEN_STORE_CLS, "org.apache.hadoop.hive.thrift.DBTokenStore");
+     hiveConf.setBoolVar(ConfVars.HIVE_SERVER2_ENABLE_DOAS, false);
+-    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc(hiveConf);
+     miniHS2 = MiniHiveKdc.getMiniHS2WithKerbWithRemoteHMSWithKerb(miniHiveKdc, hiveConf);
+     miniHS2.start(confOverlay);
+     String metastorePrincipal = miniHS2.getConfProperty(ConfVars.METASTORE_KERBEROS_PRINCIPAL.varname);
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdc.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdc.java
+index 8e6adac..fab25c8 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdc.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdc.java
+@@ -66,12 +66,13 @@ public void run(HiveSessionHookContext sessionHookContext) throws HiveSQLExcepti
+ 
+   @BeforeClass
+   public static void beforeTest() throws Exception {
++    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc();
++
+     Class.forName(MiniHS2.getJdbcDriverName());
+     confOverlay.put(ConfVars.HIVE_SERVER2_SESSION_HOOK.varname,
+         SessionHookTest.class.getName());
+ 
+     HiveConf hiveConf = new HiveConf();
+-    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc(hiveConf);
+     miniHS2 = MiniHiveKdc.getMiniHS2WithKerb(miniHiveKdc, hiveConf);
+     miniHS2.start(confOverlay);
+   }
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdcSQLAuthBinary.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdcSQLAuthBinary.java
+index 65098ae..cb8367e 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdcSQLAuthBinary.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdcSQLAuthBinary.java
+@@ -18,7 +18,6 @@
+ 
+ package org.apache.hive.minikdc;
+ 
+-import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+ import org.apache.hive.jdbc.miniHS2.MiniHS2;
+ import org.junit.BeforeClass;
+ 
+@@ -26,8 +25,7 @@
+ 
+   @BeforeClass
+   public static void beforeTest() throws Exception {
+-    hiveConf.setVar(ConfVars.HIVE_SERVER2_TRANSPORT_MODE, MiniHS2.HS2_HTTP_MODE);
+-    JdbcWithMiniKdcSQLAuthTest.beforeTestBase();
++    JdbcWithMiniKdcSQLAuthTest.beforeTestBase(MiniHS2.HS2_HTTP_MODE);
+ 
+   }
+ 
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdcSQLAuthHttp.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdcSQLAuthHttp.java
+index 64f032a..4acc063 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdcSQLAuthHttp.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithMiniKdcSQLAuthHttp.java
+@@ -18,7 +18,6 @@
+ 
+ package org.apache.hive.minikdc;
+ 
+-import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+ import org.apache.hive.jdbc.miniHS2.MiniHS2;
+ import org.junit.BeforeClass;
+ 
+@@ -26,8 +25,7 @@
+ 
+   @BeforeClass
+   public static void beforeTest() throws Exception {
+-    hiveConf.setVar(ConfVars.HIVE_SERVER2_TRANSPORT_MODE, MiniHS2.HS2_HTTP_MODE);
+-    JdbcWithMiniKdcSQLAuthTest.beforeTestBase();
++    JdbcWithMiniKdcSQLAuthTest.beforeTestBase(MiniHS2.HS2_HTTP_MODE);
+ 
+   }
+ 
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestMiniHiveKdc.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestMiniHiveKdc.java
+index abfd662..11473a8 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestMiniHiveKdc.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestMiniHiveKdc.java
+@@ -22,7 +22,6 @@
+ 
+ import java.io.File;
+ 
+-import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.shims.Utils;
+ import org.apache.hadoop.security.UserGroupInformation;
+ import org.junit.After;
+@@ -37,7 +36,6 @@
+ 
+   private static File baseDir;
+   private MiniHiveKdc miniHiveKdc;
+-  private HiveConf hiveConf;
+ 
+   @BeforeClass
+   public static void beforeTest() throws Exception {
+@@ -47,8 +45,7 @@ public static void beforeTest() throws Exception {
+ 
+   @Before
+   public void setUp() throws Exception {
+-    hiveConf = new HiveConf();
+-    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc(hiveConf);
++    miniHiveKdc = MiniHiveKdc.getMiniHiveKdc();
+   }
+ 
+   @After
+-- 
+1.7.9.5
+

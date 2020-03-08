@@ -1,0 +1,70 @@
+From cddbbc91ef78e7b0916a1652439582687d8944ae Mon Sep 17 00:00:00 2001
+From: Yongzhi Chen <ychena@apache.org>
+Date: Tue, 13 Feb 2018 10:03:53 -0500
+Subject: [PATCH 1335/1363] CDH-64974 HIVE-18671: Lock not released after Hive
+ on Spark query was cancelled (Yongzhi Chen,
+ reviewed by Aihua Xu)
+
+Change-Id: Idc3bd465d9aa40daaacc1b24f16b1ab7bb146e47
+---
+ .../exec/spark/status/RemoteSparkJobMonitor.java   |    6 ++++++
+ .../hadoop/hive/ql/exec/spark/TestSparkTask.java   |   16 ++++++++++++++++
+ 2 files changed, 22 insertions(+)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/spark/status/RemoteSparkJobMonitor.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/spark/status/RemoteSparkJobMonitor.java
+index 11f263b..75405fa 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/spark/status/RemoteSparkJobMonitor.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/spark/status/RemoteSparkJobMonitor.java
+@@ -118,6 +118,12 @@ public int startMonitor() {
+           done = true;
+           rc = 3;
+           break;
++        case CANCELLED:
++          console.printInfo("Status: Cancelled");
++          running = false;
++          done = true;
++          rc = 3;
++          break;
+         }
+ 
+         if (!done) {
+diff --git a/ql/src/test/org/apache/hadoop/hive/ql/exec/spark/TestSparkTask.java b/ql/src/test/org/apache/hadoop/hive/ql/exec/spark/TestSparkTask.java
+index 4c7ec76..ac77715 100644
+--- a/ql/src/test/org/apache/hadoop/hive/ql/exec/spark/TestSparkTask.java
++++ b/ql/src/test/org/apache/hadoop/hive/ql/exec/spark/TestSparkTask.java
+@@ -20,11 +20,18 @@
+ import static org.mockito.Mockito.never;
+ import static org.mockito.Mockito.times;
+ import static org.mockito.Mockito.verify;
++import static org.mockito.Mockito.when;
+ 
+ import java.io.IOException;
+ 
+ import org.apache.hadoop.hive.common.metrics.common.Metrics;
+ import org.apache.hadoop.hive.common.metrics.common.MetricsConstant;
++import org.apache.hadoop.hive.conf.HiveConf;
++import org.apache.hadoop.hive.ql.exec.spark.status.RemoteSparkJobMonitor;
++import org.apache.hadoop.hive.ql.exec.spark.status.impl.RemoteSparkJobStatus;
++import org.apache.hadoop.hive.ql.plan.SparkWork;
++import org.apache.hive.spark.client.JobHandle.State;
++import org.junit.Assert;
+ import org.junit.Test;
+ import org.mockito.Mockito;
+ 
+@@ -43,4 +50,13 @@ public void sparkTask_updates_Metrics() throws IOException {
+     verify(mockMetrics, never()).incrementCounter(MetricsConstant.HIVE_MR_TASKS);
+   }
+ 
++  @Test
++  public void testRemoteSparkCancel() {
++    RemoteSparkJobStatus jobSts = Mockito.mock(RemoteSparkJobStatus.class);
++    when(jobSts.getRemoteJobState()).thenReturn(State.CANCELLED);
++    //when(jobSts.isRemoteActive()).thenReturn(true);
++    HiveConf hiveConf = new HiveConf();
++    RemoteSparkJobMonitor remoteSparkJobMonitor = new RemoteSparkJobMonitor(hiveConf, jobSts);
++    Assert.assertEquals(remoteSparkJobMonitor.startMonitor(), 3);
++  }
+ }
+-- 
+1.7.9.5
+

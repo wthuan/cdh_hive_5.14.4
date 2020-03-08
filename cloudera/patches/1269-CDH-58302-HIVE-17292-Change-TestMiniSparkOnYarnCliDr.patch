@@ -1,0 +1,32 @@
+From 0f3f9c93c89d83067404c3aca66a1844290e846b Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Mon, 21 Aug 2017 10:13:26 +0800
+Subject: [PATCH 1269/1363] CDH-58302: HIVE-17292: Change
+ TestMiniSparkOnYarnCliDriver test configuration
+ to use the configured cores (Peter Vary reviewed
+ by Xuefu and Rui) (addendum)            Fixing
+ new qtest out file
+
+(cherry picked from commit 0671fa46ab776cec64ef103b95cd378e2a211771)
+
+Change-Id: I6a7d949aa2f53c1d6f27aae28b2328924d301143
+---
+ .../clientpositive/spark/spark_constprog_dpp.q.out |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ql/src/test/results/clientpositive/spark/spark_constprog_dpp.q.out b/ql/src/test/results/clientpositive/spark/spark_constprog_dpp.q.out
+index 9cb1475..93e2360 100644
+--- a/ql/src/test/results/clientpositive/spark/spark_constprog_dpp.q.out
++++ b/ql/src/test/results/clientpositive/spark/spark_constprog_dpp.q.out
+@@ -46,7 +46,7 @@ STAGE PLANS:
+   Stage: Stage-1
+     Spark
+       Edges:
+-        Reducer 2 <- Map 1 (PARTITION-LEVEL SORT, 2), Map 5 (PARTITION-LEVEL SORT, 2), Reducer 4 (PARTITION-LEVEL SORT, 2)
++        Reducer 2 <- Map 1 (PARTITION-LEVEL SORT, 4), Map 5 (PARTITION-LEVEL SORT, 4), Reducer 4 (PARTITION-LEVEL SORT, 4)
+         Reducer 4 <- Map 3 (GROUP, 1)
+ #### A masked pattern was here ####
+       Vertices:
+-- 
+1.7.9.5
+

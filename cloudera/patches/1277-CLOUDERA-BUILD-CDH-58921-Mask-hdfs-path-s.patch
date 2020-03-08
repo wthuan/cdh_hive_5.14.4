@@ -1,0 +1,25 @@
+From e67cf96a6609f6420711c5309d783271168d8f60 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Thu, 7 Sep 2017 14:43:24 +0200
+Subject: [PATCH 1277/1363] CLOUDERA-BUILD: CDH-58921: Mask hdfs path-s
+
+Change-Id: I14140ee61e4baa2f454ca1e3c0a7b75acb8df733
+---
+ .../main/java/org/apache/hive/beeline/QFile.java   |    1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/itests/util/src/main/java/org/apache/hive/beeline/QFile.java b/itests/util/src/main/java/org/apache/hive/beeline/QFile.java
+index e829dd0..418f98d 100644
+--- a/itests/util/src/main/java/org/apache/hive/beeline/QFile.java
++++ b/itests/util/src/main/java/org/apache/hive/beeline/QFile.java
+@@ -299,6 +299,7 @@ private static RegexFilterSet getStaticFilterSet() {
+         .addFilter("INFO  : ", "")
+         .addFilter(".*/tmp/.*\n", MASK_PATTERN)
+         .addFilter(".*file:.*\n", MASK_PATTERN)
++        .addFilter(".*hdfs:.*\n", MASK_PATTERN)
+         .addFilter(".*file\\..*\n", MASK_PATTERN)
+         .addFilter(".*CreateTime.*\n", MASK_PATTERN)
+         .addFilter(".*transient_lastDdlTime.*\n", MASK_PATTERN)
+-- 
+1.7.9.5
+

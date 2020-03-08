@@ -1,0 +1,409 @@
+From ae515aad6ee5efdc6c22c69550f1d829e952f329 Mon Sep 17 00:00:00 2001
+From: Jesus Camacho Rodriguez <jcamacho@apache.org>
+Date: Thu, 15 Dec 2016 18:27:25 +0000
+Subject: [PATCH 1172/1363] CDH-54613: HIVE-15122: Hive: Upcasting types
+ should not obscure stats (min/max/ndv) (Jesus
+ Camacho Rodriguez, reviewed by Ashutosh Chauhan)
+
+Change-Id: I800d77e7279716875eb0d5bf251037f2cafd280f
+---
+ .../apache/hadoop/hive/ql/stats/StatsUtils.java    |   52 +++++-
+ .../clientpositive/annotate_stats_join_pkfk.q      |   41 +++++
+ .../clientpositive/annotate_stats_join_pkfk.q.out  |  173 ++++++++++++++++++++
+ 3 files changed, 261 insertions(+), 5 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsUtils.java b/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsUtils.java
+index 721852a..8d90c4b 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsUtils.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/stats/StatsUtils.java
+@@ -21,6 +21,7 @@
+ import com.google.common.base.Joiner;
+ import com.google.common.collect.Lists;
+ import com.google.common.math.LongMath;
++import com.google.common.util.concurrent.ThreadFactoryBuilder;
+ 
+ import org.apache.commons.logging.Log;
+ import org.apache.commons.logging.LogFactory;
+@@ -36,12 +37,10 @@
+ import java.util.Set;
+ import java.util.concurrent.Callable;
+ import java.util.concurrent.ExecutionException;
+-import java.util.concurrent.Executors;
+ import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
+ import java.util.concurrent.Future;
+ 
+-
+-import com.google.common.util.concurrent.ThreadFactoryBuilder;
+ import org.apache.hadoop.conf.Configuration;
+ import org.apache.hadoop.fs.FileSystem;
+ import org.apache.hadoop.fs.Path;
+@@ -54,6 +53,7 @@
+ import org.apache.hadoop.hive.metastore.api.ColumnStatisticsObj;
+ import org.apache.hadoop.hive.metastore.api.Decimal;
+ import org.apache.hadoop.hive.ql.exec.ColumnInfo;
++import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
+ import org.apache.hadoop.hive.ql.exec.RowSchema;
+ import org.apache.hadoop.hive.ql.exec.TableScanOperator;
+ import org.apache.hadoop.hive.ql.exec.Utilities;
+@@ -72,6 +72,7 @@
+ import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
+ import org.apache.hadoop.hive.ql.plan.Statistics;
+ import org.apache.hadoop.hive.ql.plan.Statistics.State;
++import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
+ import org.apache.hadoop.hive.ql.util.JavaDataModel;
+ import org.apache.hadoop.hive.serde.serdeConstants;
+ import org.apache.hadoop.hive.serde2.objectinspector.ConstantObjectInspector;
+@@ -1247,11 +1248,42 @@ public static ColStatistics getColStatisticsFromExpression(HiveConf conf, Statis
+         oi = encd.getWritableObjectInspector();
+       }
+     } else if (end instanceof ExprNodeGenericFuncDesc) {
+-
+-      // udf projection
+       ExprNodeGenericFuncDesc engfd = (ExprNodeGenericFuncDesc) end;
+       colName = engfd.getName();
+       colType = engfd.getTypeString();
++
++      // If it is a widening cast, we do not change NDV, min, max
++      if (isWideningCast(engfd) && engfd.getChildren().get(0) instanceof ExprNodeColumnDesc) {
++        // cast on single column
++        ColStatistics stats = parentStats.getColumnStatisticsFromColName(engfd.getCols().get(0));
++        if (stats != null) {
++          ColStatistics newStats;
++          try {
++            newStats = stats.clone();
++          } catch (CloneNotSupportedException e) {
++            LOG.warn("error cloning stats, this should not happen");
++            return null;
++          }
++          newStats.setColumnName(colName);
++          colType = colType.toLowerCase();
++          newStats.setColumnType(colType);
++          colType = colType.toLowerCase();
++          if (colType.equals(serdeConstants.STRING_TYPE_NAME)
++              || colType.equals(serdeConstants.BINARY_TYPE_NAME)
++              || colType.startsWith(serdeConstants.VARCHAR_TYPE_NAME)
++              || colType.startsWith(serdeConstants.CHAR_TYPE_NAME)
++              || colType.startsWith(serdeConstants.LIST_TYPE_NAME)
++              || colType.startsWith(serdeConstants.MAP_TYPE_NAME)
++              || colType.startsWith(serdeConstants.STRUCT_TYPE_NAME)
++              || colType.startsWith(serdeConstants.UNION_TYPE_NAME)) {
++            newStats.setAvgColLen(getAvgColLenOfVariableLengthTypes(conf, oi, colType));
++          } else {
++            newStats.setAvgColLen(getAvgColLenOfFixedLengthTypes(colType));
++          }
++          return newStats;
++        }
++      }
++      // fallback to default
+       countDistincts = numRows;
+       oi = engfd.getWritableObjectInspector();
+     } else if (end instanceof ExprNodeColumnListDesc) {
+@@ -1294,6 +1326,16 @@ public static ColStatistics getColStatisticsFromExpression(HiveConf conf, Statis
+     return colStats;
+   }
+ 
++  private static boolean isWideningCast(ExprNodeGenericFuncDesc engfd) {
++    GenericUDF udf = engfd.getGenericUDF();
++    if (!FunctionRegistry.isOpCast(udf)) {
++      // It is not a cast
++      return false;
++    }
++    return FunctionRegistry.implicitConvertible(engfd.getChildren().get(0).getTypeInfo(),
++            engfd.getTypeInfo());
++  }
++
+   /**
+    * Get number of rows of a give table
+    * @return number of rows
+diff --git a/ql/src/test/queries/clientpositive/annotate_stats_join_pkfk.q b/ql/src/test/queries/clientpositive/annotate_stats_join_pkfk.q
+index aa62c60..f94994a 100644
+--- a/ql/src/test/queries/clientpositive/annotate_stats_join_pkfk.q
++++ b/ql/src/test/queries/clientpositive/annotate_stats_join_pkfk.q
+@@ -69,6 +69,40 @@ create table store
+ )
+ row format delimited fields terminated by '|';
+ 
++create table store_bigint
++(
++    s_store_sk                bigint,
++    s_store_id                string,
++    s_rec_start_date          string,
++    s_rec_end_date            string,
++    s_closed_date_sk          int,
++    s_store_name              string,
++    s_number_employees        int,
++    s_floor_space             int,
++    s_hours                   string,
++    s_manager                 string,
++    s_market_id               int,
++    s_geography_class         string,
++    s_market_desc             string,
++    s_market_manager          string,
++    s_division_id             int,
++    s_division_name           string,
++    s_company_id              int,
++    s_company_name            string,
++    s_street_number           string,
++    s_street_name             string,
++    s_street_type             string,
++    s_suite_number            string,
++    s_city                    string,
++    s_county                  string,
++    s_state                   string,
++    s_zip                     string,
++    s_country                 string,
++    s_gmt_offset              float,
++    s_tax_precentage          float
++)
++row format delimited fields terminated by '|';
++
+ create table customer_address
+ (
+     ca_address_sk             int,
+@@ -88,11 +122,14 @@ create table customer_address
+ row format delimited fields terminated by '|';
+ 
+ load data local inpath '../../data/files/store.txt' overwrite into table store;
++load data local inpath '../../data/files/store.txt' overwrite into table store_bigint;
+ load data local inpath '../../data/files/store_sales.txt' overwrite into table store_sales;
+ load data local inpath '../../data/files/customer_address.txt' overwrite into table customer_address;
+ 
+ analyze table store compute statistics;
+ analyze table store compute statistics for columns s_store_sk, s_floor_space;
++analyze table store_bigint compute statistics;
++analyze table store_bigint compute statistics for columns s_store_sk, s_floor_space;
+ analyze table store_sales compute statistics;
+ analyze table store_sales compute statistics for columns ss_store_sk, ss_addr_sk, ss_quantity;
+ analyze table customer_address compute statistics;
+@@ -100,6 +137,9 @@ analyze table customer_address compute statistics for columns ca_address_sk;
+ 
+ explain select s.s_store_sk from store s join store_sales ss on (s.s_store_sk = ss.ss_store_sk);
+ 
++-- widening cast: inferred PK-FK, thus same row count as previous query
++explain select s.s_store_sk from store_bigint s join store_sales ss on (s.s_store_sk = ss.ss_store_sk);
++
+ explain select s.s_store_sk from store s join store_sales ss on (s.s_store_sk = ss.ss_store_sk) where s.s_store_sk > 0;
+ 
+ explain select s.s_store_sk from store s join store_sales ss on (s.s_store_sk = ss.ss_store_sk) where s.s_company_id > 0 and ss.ss_quantity > 10;
+@@ -120,4 +160,5 @@ explain select s.s_store_sk from store s join store_sales ss on (s.s_store_sk =
+ 
+ drop table store_sales;
+ drop table store;
++drop table store_bigint;
+ drop table customer_address;
+diff --git a/ql/src/test/results/clientpositive/annotate_stats_join_pkfk.q.out b/ql/src/test/results/clientpositive/annotate_stats_join_pkfk.q.out
+index c031b56..dbdb543 100644
+--- a/ql/src/test/results/clientpositive/annotate_stats_join_pkfk.q.out
++++ b/ql/src/test/results/clientpositive/annotate_stats_join_pkfk.q.out
+@@ -142,6 +142,78 @@ row format delimited fields terminated by '|'
+ POSTHOOK: type: CREATETABLE
+ POSTHOOK: Output: database:default
+ POSTHOOK: Output: default@store
++PREHOOK: query: create table store_bigint
++(
++    s_store_sk                bigint,
++    s_store_id                string,
++    s_rec_start_date          string,
++    s_rec_end_date            string,
++    s_closed_date_sk          int,
++    s_store_name              string,
++    s_number_employees        int,
++    s_floor_space             int,
++    s_hours                   string,
++    s_manager                 string,
++    s_market_id               int,
++    s_geography_class         string,
++    s_market_desc             string,
++    s_market_manager          string,
++    s_division_id             int,
++    s_division_name           string,
++    s_company_id              int,
++    s_company_name            string,
++    s_street_number           string,
++    s_street_name             string,
++    s_street_type             string,
++    s_suite_number            string,
++    s_city                    string,
++    s_county                  string,
++    s_state                   string,
++    s_zip                     string,
++    s_country                 string,
++    s_gmt_offset              float,
++    s_tax_precentage          float
++)
++row format delimited fields terminated by '|'
++PREHOOK: type: CREATETABLE
++PREHOOK: Output: database:default
++PREHOOK: Output: default@store_bigint
++POSTHOOK: query: create table store_bigint
++(
++    s_store_sk                bigint,
++    s_store_id                string,
++    s_rec_start_date          string,
++    s_rec_end_date            string,
++    s_closed_date_sk          int,
++    s_store_name              string,
++    s_number_employees        int,
++    s_floor_space             int,
++    s_hours                   string,
++    s_manager                 string,
++    s_market_id               int,
++    s_geography_class         string,
++    s_market_desc             string,
++    s_market_manager          string,
++    s_division_id             int,
++    s_division_name           string,
++    s_company_id              int,
++    s_company_name            string,
++    s_street_number           string,
++    s_street_name             string,
++    s_street_type             string,
++    s_suite_number            string,
++    s_city                    string,
++    s_county                  string,
++    s_state                   string,
++    s_zip                     string,
++    s_country                 string,
++    s_gmt_offset              float,
++    s_tax_precentage          float
++)
++row format delimited fields terminated by '|'
++POSTHOOK: type: CREATETABLE
++POSTHOOK: Output: database:default
++POSTHOOK: Output: default@store_bigint
+ PREHOOK: query: create table customer_address
+ (
+     ca_address_sk             int,
+@@ -190,6 +262,14 @@ POSTHOOK: query: load data local inpath '../../data/files/store.txt' overwrite i
+ POSTHOOK: type: LOAD
+ #### A masked pattern was here ####
+ POSTHOOK: Output: default@store
++PREHOOK: query: load data local inpath '../../data/files/store.txt' overwrite into table store_bigint
++PREHOOK: type: LOAD
++#### A masked pattern was here ####
++PREHOOK: Output: default@store_bigint
++POSTHOOK: query: load data local inpath '../../data/files/store.txt' overwrite into table store_bigint
++POSTHOOK: type: LOAD
++#### A masked pattern was here ####
++POSTHOOK: Output: default@store_bigint
+ PREHOOK: query: load data local inpath '../../data/files/store_sales.txt' overwrite into table store_sales
+ PREHOOK: type: LOAD
+ #### A masked pattern was here ####
+@@ -222,6 +302,22 @@ POSTHOOK: query: analyze table store compute statistics for columns s_store_sk,
+ POSTHOOK: type: QUERY
+ POSTHOOK: Input: default@store
+ #### A masked pattern was here ####
++PREHOOK: query: analyze table store_bigint compute statistics
++PREHOOK: type: QUERY
++PREHOOK: Input: default@store_bigint
++PREHOOK: Output: default@store_bigint
++POSTHOOK: query: analyze table store_bigint compute statistics
++POSTHOOK: type: QUERY
++POSTHOOK: Input: default@store_bigint
++POSTHOOK: Output: default@store_bigint
++PREHOOK: query: analyze table store_bigint compute statistics for columns s_store_sk, s_floor_space
++PREHOOK: type: QUERY
++PREHOOK: Input: default@store_bigint
++#### A masked pattern was here ####
++POSTHOOK: query: analyze table store_bigint compute statistics for columns s_store_sk, s_floor_space
++POSTHOOK: type: QUERY
++POSTHOOK: Input: default@store_bigint
++#### A masked pattern was here ####
+ PREHOOK: query: analyze table store_sales compute statistics
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@store_sales
+@@ -323,6 +419,75 @@ STAGE PLANS:
+       Processor Tree:
+         ListSink
+ 
++PREHOOK: query: explain select s.s_store_sk from store_bigint s join store_sales ss on (s.s_store_sk = ss.ss_store_sk)
++PREHOOK: type: QUERY
++POSTHOOK: query: explain select s.s_store_sk from store_bigint s join store_sales ss on (s.s_store_sk = ss.ss_store_sk)
++POSTHOOK: type: QUERY
++STAGE DEPENDENCIES:
++  Stage-1 is a root stage
++  Stage-0 depends on stages: Stage-1
++
++STAGE PLANS:
++  Stage: Stage-1
++    Map Reduce
++      Map Operator Tree:
++          TableScan
++            alias: ss
++            Statistics: Num rows: 1000 Data size: 130523 Basic stats: COMPLETE Column stats: COMPLETE
++            Filter Operator
++              predicate: UDFToLong(ss_store_sk) is not null (type: boolean)
++              Statistics: Num rows: 500 Data size: 1928 Basic stats: COMPLETE Column stats: COMPLETE
++              Select Operator
++                expressions: ss_store_sk (type: int)
++                outputColumnNames: _col0
++                Statistics: Num rows: 500 Data size: 1928 Basic stats: COMPLETE Column stats: COMPLETE
++                Reduce Output Operator
++                  key expressions: UDFToLong(_col0) (type: bigint)
++                  sort order: +
++                  Map-reduce partition columns: UDFToLong(_col0) (type: bigint)
++                  Statistics: Num rows: 500 Data size: 1928 Basic stats: COMPLETE Column stats: COMPLETE
++          TableScan
++            alias: s
++            Statistics: Num rows: 12 Data size: 3143 Basic stats: COMPLETE Column stats: COMPLETE
++            Filter Operator
++              predicate: s_store_sk is not null (type: boolean)
++              Statistics: Num rows: 12 Data size: 96 Basic stats: COMPLETE Column stats: COMPLETE
++              Select Operator
++                expressions: s_store_sk (type: bigint)
++                outputColumnNames: _col0
++                Statistics: Num rows: 12 Data size: 96 Basic stats: COMPLETE Column stats: COMPLETE
++                Reduce Output Operator
++                  key expressions: _col0 (type: bigint)
++                  sort order: +
++                  Map-reduce partition columns: _col0 (type: bigint)
++                  Statistics: Num rows: 12 Data size: 96 Basic stats: COMPLETE Column stats: COMPLETE
++      Reduce Operator Tree:
++        Join Operator
++          condition map:
++               Inner Join 0 to 1
++          keys:
++            0 UDFToLong(_col0) (type: bigint)
++            1 _col0 (type: bigint)
++          outputColumnNames: _col1
++          Statistics: Num rows: 500 Data size: 4000 Basic stats: COMPLETE Column stats: COMPLETE
++          Select Operator
++            expressions: _col1 (type: bigint)
++            outputColumnNames: _col0
++            Statistics: Num rows: 500 Data size: 4000 Basic stats: COMPLETE Column stats: COMPLETE
++            File Output Operator
++              compressed: false
++              Statistics: Num rows: 500 Data size: 4000 Basic stats: COMPLETE Column stats: COMPLETE
++              table:
++                  input format: org.apache.hadoop.mapred.TextInputFormat
++                  output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
++                  serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
++
++  Stage: Stage-0
++    Fetch Operator
++      limit: -1
++      Processor Tree:
++        ListSink
++
+ PREHOOK: query: explain select s.s_store_sk from store s join store_sales ss on (s.s_store_sk = ss.ss_store_sk) where s.s_store_sk > 0
+ PREHOOK: type: QUERY
+ POSTHOOK: query: explain select s.s_store_sk from store s join store_sales ss on (s.s_store_sk = ss.ss_store_sk) where s.s_store_sk > 0
+@@ -1070,6 +1235,14 @@ POSTHOOK: query: drop table store
+ POSTHOOK: type: DROPTABLE
+ POSTHOOK: Input: default@store
+ POSTHOOK: Output: default@store
++PREHOOK: query: drop table store_bigint
++PREHOOK: type: DROPTABLE
++PREHOOK: Input: default@store_bigint
++PREHOOK: Output: default@store_bigint
++POSTHOOK: query: drop table store_bigint
++POSTHOOK: type: DROPTABLE
++POSTHOOK: Input: default@store_bigint
++POSTHOOK: Output: default@store_bigint
+ PREHOOK: query: drop table customer_address
+ PREHOOK: type: DROPTABLE
+ PREHOOK: Input: default@customer_address
+-- 
+1.7.9.5
+

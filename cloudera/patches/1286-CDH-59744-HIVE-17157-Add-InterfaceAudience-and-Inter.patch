@@ -1,0 +1,673 @@
+From 8356736346f5361dfabe125ab8fc837b3c623826 Mon Sep 17 00:00:00 2001
+From: Sahil Takiar <takiar.sahil@gmail.com>
+Date: Wed, 27 Sep 2017 10:16:49 -0700
+Subject: [PATCH 1286/1363] CDH-59744: HIVE-17157: Add InterfaceAudience and
+ InterfaceStability annotations for
+ ObjectInspector APIs (Sahil Takiar, reviewed by
+ Aihua Xu)
+
+(cherry picked from commit 43181ca3c38ac4ed640b5bfeaf4d9ba52755538c)
+
+Conflicts:
+	serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveIntervalDayTimeObjectInspector.java
+	serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveIntervalYearMonthObjectInspector.java
+	serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/PrimitiveObjectInspectorUtils.java
+
+Change-Id: Ie00f1e82f838928b79251543f8b5355af176746c
+---
+ .../objectinspector/ConstantObjectInspector.java   |    5 +++++
+ .../objectinspector/ListObjectInspector.java       |    5 +++++
+ .../serde2/objectinspector/MapObjectInspector.java |    5 +++++
+ .../hive/serde2/objectinspector/StructField.java   |    5 +++++
+ .../objectinspector/StructObjectInspector.java     |    5 +++++
+ .../hive/serde2/objectinspector/UnionObject.java   |    5 +++++
+ .../objectinspector/UnionObjectInspector.java      |    5 +++++
+ .../primitive/BinaryObjectInspector.java           |    5 +++++
+ .../primitive/BooleanObjectInspector.java          |    4 ++++
+ .../primitive/ByteObjectInspector.java             |    4 ++++
+ .../primitive/DateObjectInspector.java             |    4 ++++
+ .../primitive/DoubleObjectInspector.java           |    4 ++++
+ .../primitive/FloatObjectInspector.java            |    4 ++++
+ .../primitive/HiveCharObjectInspector.java         |    4 ++++
+ .../primitive/HiveDecimalObjectInspector.java      |    4 ++++
+ .../primitive/HiveVarcharObjectInspector.java      |    4 ++++
+ .../primitive/IntObjectInspector.java              |    4 ++++
+ .../primitive/LongObjectInspector.java             |    4 ++++
+ .../primitive/PrimitiveObjectInspectorUtils.java   |    4 ++++
+ .../primitive/ShortObjectInspector.java            |    4 ++++
+ .../primitive/StringObjectInspector.java           |    4 ++++
+ .../primitive/TimestampObjectInspector.java        |    4 ++++
+ .../primitive/VoidObjectInspector.java             |    4 ++++
+ .../hive/serde2/typeinfo/BaseCharTypeInfo.java     |    5 +++++
+ .../hadoop/hive/serde2/typeinfo/ListTypeInfo.java  |    4 ++++
+ .../hadoop/hive/serde2/typeinfo/MapTypeInfo.java   |    4 ++++
+ .../hive/serde2/typeinfo/PrimitiveTypeInfo.java    |    4 ++++
+ .../hive/serde2/typeinfo/StructTypeInfo.java       |    4 ++++
+ .../hadoop/hive/serde2/typeinfo/TypeInfo.java      |    4 ++++
+ .../hadoop/hive/serde2/typeinfo/UnionTypeInfo.java |    4 ++++
+ 30 files changed, 129 insertions(+)
+
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ConstantObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ConstantObjectInspector.java
+index 730e836..1adc72b 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ConstantObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ConstantObjectInspector.java
+@@ -17,11 +17,16 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * ConstantObjectInspector.  This interface should be implemented by
+  * ObjectInspectors which represent constant values and can return them without
+  * an evaluation.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface ConstantObjectInspector extends ObjectInspector {
+ 
+   Object getWritableConstantValue();
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ListObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ListObjectInspector.java
+index da544a3..56d59e7 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ListObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/ListObjectInspector.java
+@@ -17,12 +17,17 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ import java.util.List;
+ 
+ /**
+  * ListObjectInspector.
+  *
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface ListObjectInspector extends ObjectInspector {
+ 
+   // ** Methods that does not need a data object **
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/MapObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/MapObjectInspector.java
+index f2b8239..40b11f0 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/MapObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/MapObjectInspector.java
+@@ -17,12 +17,17 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ import java.util.Map;
+ 
+ /**
+  * MapObjectInspector.
+  *
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface MapObjectInspector extends ObjectInspector {
+ 
+   // ** Methods that does not need a data object **
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/StructField.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/StructField.java
+index c6cfd39..dc147d6 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/StructField.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/StructField.java
+@@ -18,10 +18,15 @@
+ 
+ package org.apache.hadoop.hive.serde2.objectinspector;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * Classes implementing this interface are considered to represent a field of a
+  * struct for this serde package.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface StructField {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/StructObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/StructObjectInspector.java
+index 0f58293..f746354 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/StructObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/StructObjectInspector.java
+@@ -17,12 +17,17 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ import java.util.List;
+ 
+ /**
+  * StructObjectInspector.
+  *
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class StructObjectInspector implements ObjectInspector {
+ 
+   // ** Methods that does not need a data object **
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/UnionObject.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/UnionObject.java
+index 2cdfd4d..d46e7bd 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/UnionObject.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/UnionObject.java
+@@ -17,12 +17,17 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ /**
+  * The UnionObject.
+  *
+  * It has tag followed by the object it is holding.
+  *
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface UnionObject {
+   /**
+    * Get the tag of the union.
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/UnionObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/UnionObjectInspector.java
+index 26de76a..f05ea38 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/UnionObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/UnionObjectInspector.java
+@@ -18,6 +18,9 @@
+ 
+ package org.apache.hadoop.hive.serde2.objectinspector;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
+ import java.util.List;
+ 
+ /**
+@@ -29,6 +32,8 @@
+  * UnionObjectInspector.
+  *
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface UnionObjectInspector extends ObjectInspector {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/BinaryObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/BinaryObjectInspector.java
+index 416e9a7..f6489ec 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/BinaryObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/BinaryObjectInspector.java
+@@ -18,9 +18,14 @@
+ 
+ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ import org.apache.hadoop.io.BytesWritable;
+ 
++
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface BinaryObjectInspector extends PrimitiveObjectInspector {
+ 
+   @Override
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/BooleanObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/BooleanObjectInspector.java
+index 68f43a9..b1bd447 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/BooleanObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/BooleanObjectInspector.java
+@@ -17,11 +17,15 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ 
+ /**
+  * A BooleanObjectInspector inspects an Object representing a Boolean.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface BooleanObjectInspector extends PrimitiveObjectInspector {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/ByteObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/ByteObjectInspector.java
+index c9a6bb9..a0187b5 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/ByteObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/ByteObjectInspector.java
+@@ -17,11 +17,15 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ 
+ /**
+  * A ByteObjectInspector inspects an Object representing a Byte object.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface ByteObjectInspector extends PrimitiveObjectInspector {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/DateObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/DateObjectInspector.java
+index e335463..b69b87e 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/DateObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/DateObjectInspector.java
+@@ -19,12 +19,16 @@
+ 
+ import java.sql.Date;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.io.DateWritable;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ 
+ /**
+  * A DateObjectInspector inspects an Object representing a Date.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface DateObjectInspector extends PrimitiveObjectInspector {
+ 
+   DateWritable getPrimitiveWritableObject(Object o);
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/DoubleObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/DoubleObjectInspector.java
+index 665a8a8..61796ea 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/DoubleObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/DoubleObjectInspector.java
+@@ -17,11 +17,15 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ 
+ /**
+  * A DoubleObjectInspector inspects an Object representing a Double.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface DoubleObjectInspector extends PrimitiveObjectInspector {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/FloatObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/FloatObjectInspector.java
+index 13e0ecc..1d2fedd 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/FloatObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/FloatObjectInspector.java
+@@ -17,11 +17,15 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ 
+ /**
+  * A FloatObjectInspector inspects an Object representing a Float.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface FloatObjectInspector extends PrimitiveObjectInspector {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveCharObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveCharObjectInspector.java
+index 157dac3..8cd7c5e 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveCharObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveCharObjectInspector.java
+@@ -17,10 +17,14 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.common.type.HiveChar;
+ import org.apache.hadoop.hive.serde2.io.HiveCharWritable;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface HiveCharObjectInspector extends PrimitiveObjectInspector {
+   HiveCharWritable getPrimitiveWritableObject(Object o);
+ 
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveDecimalObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveDecimalObjectInspector.java
+index 51d33fa..351359f 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveDecimalObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveDecimalObjectInspector.java
+@@ -18,6 +18,8 @@
+ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
+ 
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.common.type.HiveDecimal;
+ import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+@@ -25,6 +27,8 @@
+ /**
+  * A DecimalObjectInspector inspects an Object representing a HiveDecimal.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface HiveDecimalObjectInspector extends PrimitiveObjectInspector {
+ 
+   HiveDecimalWritable getPrimitiveWritableObject(Object o);
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveVarcharObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveVarcharObjectInspector.java
+index a3ae161..d7b70d3 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveVarcharObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/HiveVarcharObjectInspector.java
+@@ -17,10 +17,14 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.common.type.HiveVarchar;
+ import org.apache.hadoop.hive.serde2.io.HiveVarcharWritable;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface HiveVarcharObjectInspector extends PrimitiveObjectInspector {
+   HiveVarcharWritable getPrimitiveWritableObject(Object o);
+ 
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/IntObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/IntObjectInspector.java
+index 1434955..0b15b5d 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/IntObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/IntObjectInspector.java
+@@ -17,11 +17,15 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ 
+ /**
+  * A IntObjectInspector inspects an Object representing an Integer.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface IntObjectInspector extends PrimitiveObjectInspector {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/LongObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/LongObjectInspector.java
+index 158dfff..15664bb 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/LongObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/LongObjectInspector.java
+@@ -17,11 +17,15 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ 
+ /**
+  * A LongObjectInspector inspects an Object representing a Long.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface LongObjectInspector extends PrimitiveObjectInspector {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/PrimitiveObjectInspectorUtils.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/PrimitiveObjectInspectorUtils.java
+index be2d950..9bd2ac0 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/PrimitiveObjectInspectorUtils.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/PrimitiveObjectInspectorUtils.java
+@@ -29,6 +29,8 @@
+ 
+ import org.apache.commons.logging.Log;
+ import org.apache.commons.logging.LogFactory;
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.common.type.HiveChar;
+ import org.apache.hadoop.hive.common.type.HiveDecimal;
+ import org.apache.hadoop.hive.common.type.HiveVarchar;
+@@ -70,6 +72,8 @@
+   /**
+    * TypeEntry stores information about a Hive Primitive TypeInfo.
+    */
++  @InterfaceAudience.Public
++  @InterfaceStability.Stable
+   public static class PrimitiveTypeEntry implements Writable, Cloneable {
+ 
+     /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/ShortObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/ShortObjectInspector.java
+index 33925d3..e83d6ae 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/ShortObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/ShortObjectInspector.java
+@@ -17,11 +17,15 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ 
+ /**
+  * A ShortObjectInspector inspects an Object representing a Short.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface ShortObjectInspector extends PrimitiveObjectInspector {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/StringObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/StringObjectInspector.java
+index 9a841fe..3a95da3 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/StringObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/StringObjectInspector.java
+@@ -17,12 +17,16 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ import org.apache.hadoop.io.Text;
+ 
+ /**
+  * A StringObjectInspector inspects an Object representing a String.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface StringObjectInspector extends PrimitiveObjectInspector {
+ 
+   /**
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/TimestampObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/TimestampObjectInspector.java
+index 6e9025b..66e8a40 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/TimestampObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/TimestampObjectInspector.java
+@@ -19,9 +19,13 @@
+ 
+ import java.sql.Timestamp;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.io.TimestampWritable;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface TimestampObjectInspector extends PrimitiveObjectInspector {
+ 
+   TimestampWritable getPrimitiveWritableObject(Object o);
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/VoidObjectInspector.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/VoidObjectInspector.java
+index d800fc8..36a59f1 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/VoidObjectInspector.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/VoidObjectInspector.java
+@@ -17,11 +17,15 @@
+  */
+ package org.apache.hadoop.hive.serde2.objectinspector.primitive;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+ 
+ /**
+  * A VoidObjectInspector can inspect a void object.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public interface VoidObjectInspector extends PrimitiveObjectInspector {
+ 
+ }
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/BaseCharTypeInfo.java b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/BaseCharTypeInfo.java
+index 7e02f7e..fc54a8f 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/BaseCharTypeInfo.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/BaseCharTypeInfo.java
+@@ -18,6 +18,11 @@
+ 
+ package org.apache.hadoop.hive.serde2.typeinfo;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
++
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class BaseCharTypeInfo extends PrimitiveTypeInfo {
+   private static final long serialVersionUID = 1L;
+ 
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/ListTypeInfo.java b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/ListTypeInfo.java
+index 48fb653..d60a96b 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/ListTypeInfo.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/ListTypeInfo.java
+@@ -20,6 +20,8 @@
+ 
+ import java.io.Serializable;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
+ 
+ /**
+@@ -29,6 +31,8 @@
+  * Always use the TypeInfoFactory to create new TypeInfo objects, instead of
+  * directly creating an instance of this class.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public final class ListTypeInfo extends TypeInfo implements Serializable {
+ 
+   private static final long serialVersionUID = 1L;
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/MapTypeInfo.java b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/MapTypeInfo.java
+index 001d7f4..5ecae58 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/MapTypeInfo.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/MapTypeInfo.java
+@@ -20,6 +20,8 @@
+ 
+ import java.io.Serializable;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
+ 
+ /**
+@@ -31,6 +33,8 @@
+  * Always use the TypeInfoFactory to create new TypeInfo objects, instead of
+  * directly creating an instance of this class.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public final class MapTypeInfo extends TypeInfo implements Serializable {
+ 
+   private static final long serialVersionUID = 1L;
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/PrimitiveTypeInfo.java b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/PrimitiveTypeInfo.java
+index a66b50a..9ec2f9b 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/PrimitiveTypeInfo.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/PrimitiveTypeInfo.java
+@@ -20,6 +20,8 @@
+ 
+ import java.io.Serializable;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
+ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
+ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils;
+@@ -32,6 +34,8 @@
+  * Always use the TypeInfoFactory to create new TypeInfo objects, instead of
+  * directly creating an instance of this class.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PrimitiveTypeInfo extends TypeInfo implements Serializable {
+   private static final long serialVersionUID = 1L;
+ 
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/StructTypeInfo.java b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/StructTypeInfo.java
+index f89a412..3984426 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/StructTypeInfo.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/StructTypeInfo.java
+@@ -23,6 +23,8 @@
+ import java.util.Iterator;
+ import java.util.List;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde.serdeConstants;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
+ 
+@@ -34,6 +36,8 @@
+  * Always use the TypeInfoFactory to create new TypeInfo objects, instead of
+  * directly creating an instance of this class.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public final class StructTypeInfo extends TypeInfo implements Serializable {
+ 
+   private static final long serialVersionUID = 1L;
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/TypeInfo.java b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/TypeInfo.java
+index 70dc181..2240c6a 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/TypeInfo.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/TypeInfo.java
+@@ -20,6 +20,8 @@
+ 
+ import java.io.Serializable;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
+ 
+ /**
+@@ -32,6 +34,8 @@
+  * list of fields with names and their own types) 5. Union objects
+  * 6. Decimal objects 7. Char objects 8. Varchar objects
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class TypeInfo implements Serializable {
+ 
+   private static final long serialVersionUID = 1L;
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/UnionTypeInfo.java b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/UnionTypeInfo.java
+index 88652fb..7157d80 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/UnionTypeInfo.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/typeinfo/UnionTypeInfo.java
+@@ -21,6 +21,8 @@
+ import java.util.ArrayList;
+ import java.util.List;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.serde.serdeConstants;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
+ 
+@@ -32,6 +34,8 @@
+  * Always use the TypeInfoFactory to create new TypeInfo objects, instead of
+  * directly creating an instance of this class.
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class UnionTypeInfo extends TypeInfo implements Serializable {
+ 
+   private static final long serialVersionUID = 1L;
+-- 
+1.7.9.5
+

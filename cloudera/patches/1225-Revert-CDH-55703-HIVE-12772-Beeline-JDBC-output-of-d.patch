@@ -1,0 +1,233 @@
+From e2329a2a9a297ff2b1729b739fdbb477c8b6d125 Mon Sep 17 00:00:00 2001
+From: Marta Kuczora <kuczoram@cloudera.com>
+Date: Wed, 2 Aug 2017 00:37:37 -0700
+Subject: [PATCH 1225/1363] Revert "CDH-55703: HIVE-12772: Beeline/JDBC output
+ of decimal values is not 0-padded, does not match
+ with CLI output (Jason Dere, reviewed by Xuefu
+ Zhang)"
+
+This reverts commit 7d61f049de70934848cc3244b3e5f19be49a52a4.
+
+Change-Id: Id93f5029e529f96688a8a66b4d3f97d3d4ac231a
+---
+ data/files/datatypes.txt                           |    2 +-
+ .../java/org/apache/hive/jdbc/TestJdbcDriver2.java |    2 +-
+ .../java/org/apache/hive/service/cli/Column.java   |   10 ----------
+ .../apache/hive/service/cli/ColumnBasedSet.java    |   14 +++++++-------
+ .../org/apache/hive/service/cli/ColumnValue.java   |   11 ++++-------
+ .../org/apache/hive/service/cli/RowBasedSet.java   |   14 +++++++-------
+ .../org/apache/hive/service/cli/TableSchema.java   |    6 +++---
+ 7 files changed, 23 insertions(+), 36 deletions(-)
+
+diff --git a/data/files/datatypes.txt b/data/files/datatypes.txt
+index 0872a1f..458c5bd 100644
+--- a/data/files/datatypes.txt
++++ b/data/files/datatypes.txt
+@@ -1,3 +1,3 @@
+ \N\N\N\N\N\N\N\N\N\N\N\N\N\N\N\N\N\N\N\N\N\N\N
+ -1false-1.1\N\N\N-1-1-1.0-1\N\N\N\N\N\N\N\N\N
+-1true1.11121x2ykva92.2111.01abcd1111213142212212x1abcd22012-04-22 09:00:00.123456789123456789.123456YWJjZA==2013-01-01abc123abc123X'01FF'
++1true1.11121x2ykva92.2111.01abcd1111213142212212x1abcd22012-04-22 09:00:00.123456789123456789.0123456YWJjZA==2013-01-01abc123abc123X'01FF'
+diff --git a/itests/hive-unit/src/test/java/org/apache/hive/jdbc/TestJdbcDriver2.java b/itests/hive-unit/src/test/java/org/apache/hive/jdbc/TestJdbcDriver2.java
+index 77906cc..7e900c4 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hive/jdbc/TestJdbcDriver2.java
++++ b/itests/hive-unit/src/test/java/org/apache/hive/jdbc/TestJdbcDriver2.java
+@@ -801,7 +801,7 @@ public void testDataTypes() throws Exception {
+     assertEquals("[{\"m\":{},\"n\":1},{\"m\":{\"a\":\"b\",\"c\":\"d\"},\"n\":2}]", res.getString(16));
+     assertEquals("2012-04-22 09:00:00.123456789", res.getString(17));
+     assertEquals("2012-04-22 09:00:00.123456789", res.getTimestamp(17).toString());
+-    assertEquals("123456789.1234560", res.getBigDecimal(18).toString());
++    assertEquals("123456789.0123456", res.getBigDecimal(18).toString());
+     assertEquals("abcd", res.getString(19));
+     assertEquals("2013-01-01", res.getString(20));
+     assertEquals("2013-01-01", res.getDate(20).toString());
+diff --git a/service/src/java/org/apache/hive/service/cli/Column.java b/service/src/java/org/apache/hive/service/cli/Column.java
+index 1c9cb77..2e21f18 100644
+--- a/service/src/java/org/apache/hive/service/cli/Column.java
++++ b/service/src/java/org/apache/hive/service/cli/Column.java
+@@ -41,8 +41,6 @@
+ import org.apache.hive.service.cli.thrift.TI64Column;
+ import org.apache.hive.service.cli.thrift.TStringColumn;
+ 
+-import org.apache.hadoop.hive.common.type.HiveDecimal;
+-
+ /**
+  * Column.
+  */
+@@ -327,14 +325,6 @@ public TColumn toTColumn() {
+   private static final ByteBuffer EMPTY_BINARY = ByteBuffer.allocate(0);
+   private static final String EMPTY_STRING = "";
+ 
+-  public void addValue(TypeDescriptor typeDescriptor, Object field) {
+-    if (field != null && typeDescriptor.getType() == Type.DECIMAL_TYPE) {
+-      int scale = typeDescriptor.getDecimalDigits();
+-      field = ((HiveDecimal) field).toFormatString(scale);
+-    }
+-    addValue(typeDescriptor.getType(), field);
+-  }
+-
+   public void addValue(Type type, Object field) {
+     switch (type) {
+       case BOOLEAN_TYPE:
+diff --git a/service/src/java/org/apache/hive/service/cli/ColumnBasedSet.java b/service/src/java/org/apache/hive/service/cli/ColumnBasedSet.java
+index 36a2a80..47a582e 100644
+--- a/service/src/java/org/apache/hive/service/cli/ColumnBasedSet.java
++++ b/service/src/java/org/apache/hive/service/cli/ColumnBasedSet.java
+@@ -33,11 +33,11 @@
+ 
+   private long startOffset;
+ 
+-  private final TypeDescriptor[] descriptors; // non-null only for writing (server-side)
++  private final Type[] types; // non-null only for writing (server-side)
+   private final List<Column> columns;
+ 
+   public ColumnBasedSet(TableSchema schema) {
+-    descriptors = schema.toTypeDescriptors();
++    types = schema.toTypes();
+     columns = new ArrayList<Column>();
+     for (ColumnDescriptor colDesc : schema.getColumnDescriptors()) {
+       columns.add(new Column(colDesc.getType()));
+@@ -45,7 +45,7 @@ public ColumnBasedSet(TableSchema schema) {
+   }
+ 
+   public ColumnBasedSet(TRowSet tRowSet) {
+-    descriptors = null;
++    types = null;
+     columns = new ArrayList<Column>();
+     for (TColumn tvalue : tRowSet.getColumns()) {
+       columns.add(new Column(tvalue));
+@@ -53,8 +53,8 @@ public ColumnBasedSet(TRowSet tRowSet) {
+     startOffset = tRowSet.getStartRowOffset();
+   }
+ 
+-  private ColumnBasedSet(TypeDescriptor[] descriptors, List<Column> columns, long startOffset) {
+-    this.descriptors = descriptors;
++  private ColumnBasedSet(Type[] types, List<Column> columns, long startOffset) {
++    this.types = types;
+     this.columns = columns;
+     this.startOffset = startOffset;
+   }
+@@ -62,7 +62,7 @@ private ColumnBasedSet(TypeDescriptor[] descriptors, List<Column> columns, long
+   @Override
+   public ColumnBasedSet addRow(Object[] fields) {
+     for (int i = 0; i < fields.length; i++) {
+-      columns.get(i).addValue(descriptors[i], fields[i]);
++      columns.get(i).addValue(types[i], fields[i]);
+     }
+     return this;
+   }
+@@ -89,7 +89,7 @@ public ColumnBasedSet extractSubset(int maxRows) {
+     for (int i = 0; i < columns.size(); i++) {
+       subset.add(columns.get(i).extractSubset(0, numRows));
+     }
+-    ColumnBasedSet result = new ColumnBasedSet(descriptors, subset, startOffset);
++    ColumnBasedSet result = new ColumnBasedSet(types, subset, startOffset);
+     startOffset += numRows;
+     return result;
+   }
+diff --git a/service/src/java/org/apache/hive/service/cli/ColumnValue.java b/service/src/java/org/apache/hive/service/cli/ColumnValue.java
+index e25ddbf..d383180 100644
+--- a/service/src/java/org/apache/hive/service/cli/ColumnValue.java
++++ b/service/src/java/org/apache/hive/service/cli/ColumnValue.java
+@@ -136,18 +136,15 @@ private static TColumnValue timestampValue(Timestamp value) {
+     return TColumnValue.stringVal(tStringValue);
+   }
+ 
+-  private static TColumnValue stringValue(HiveDecimal value, TypeDescriptor typeDescriptor) {
++  private static TColumnValue stringValue(HiveDecimal value) {
+     TStringValue tStrValue = new TStringValue();
+     if (value != null) {
+-      int scale = typeDescriptor.getDecimalDigits();
+-      tStrValue.setValue(value.toFormatString(scale));
++      tStrValue.setValue(value.toString());
+     }
+     return TColumnValue.stringVal(tStrValue);
+   }
+ 
+-  public static TColumnValue toTColumnValue(TypeDescriptor typeDescriptor, Object value) {
+-    Type type = typeDescriptor.getType();
+-
++  public static TColumnValue toTColumnValue(Type type, Object value) {
+     switch (type) {
+     case BOOLEAN_TYPE:
+       return booleanValue((Boolean)value);
+@@ -174,7 +171,7 @@ public static TColumnValue toTColumnValue(TypeDescriptor typeDescriptor, Object
+     case TIMESTAMP_TYPE:
+       return timestampValue((Timestamp)value);
+     case DECIMAL_TYPE:
+-      return stringValue((HiveDecimal)value, typeDescriptor);
++      return stringValue(((HiveDecimal)value));
+     case BINARY_TYPE:
+       return stringValue((String)value);
+     case ARRAY_TYPE:
+diff --git a/service/src/java/org/apache/hive/service/cli/RowBasedSet.java b/service/src/java/org/apache/hive/service/cli/RowBasedSet.java
+index 6fbb4c5..a0ee210 100644
+--- a/service/src/java/org/apache/hive/service/cli/RowBasedSet.java
++++ b/service/src/java/org/apache/hive/service/cli/RowBasedSet.java
+@@ -33,22 +33,22 @@
+ 
+   private long startOffset;
+ 
+-  private final TypeDescriptor[] descriptors; // non-null only for writing (server-side)
++  private final Type[] types; // non-null only for writing (server-side)
+   private final RemovableList<TRow> rows;
+ 
+   public RowBasedSet(TableSchema schema) {
+-    descriptors = schema.toTypeDescriptors();
++    types = schema.toTypes();
+     rows = new RemovableList<TRow>();
+   }
+ 
+   public RowBasedSet(TRowSet tRowSet) {
+-    descriptors = null;
++    types = null;
+     rows = new RemovableList<TRow>(tRowSet.getRows());
+     startOffset = tRowSet.getStartRowOffset();
+   }
+ 
+-  private RowBasedSet(TypeDescriptor[] descriptors, List<TRow> rows, long startOffset) {
+-    this.descriptors = descriptors;
++  private RowBasedSet(Type[] types, List<TRow> rows, long startOffset) {
++    this.types = types;
+     this.rows = new RemovableList<TRow>(rows);
+     this.startOffset = startOffset;
+   }
+@@ -57,7 +57,7 @@ private RowBasedSet(TypeDescriptor[] descriptors, List<TRow> rows, long startOff
+   public RowBasedSet addRow(Object[] fields) {
+     TRow tRow = new TRow();
+     for (int i = 0; i < fields.length; i++) {
+-      tRow.addToColVals(ColumnValue.toTColumnValue(descriptors[i], fields[i]));
++      tRow.addToColVals(ColumnValue.toTColumnValue(types[i], fields[i]));
+     }
+     rows.add(tRow);
+     return this;
+@@ -75,7 +75,7 @@ public int numRows() {
+ 
+   public RowBasedSet extractSubset(int maxRows) {
+     int numRows = Math.min(numRows(), maxRows);
+-    RowBasedSet result = new RowBasedSet(descriptors, rows.subList(0, numRows), startOffset);
++    RowBasedSet result = new RowBasedSet(types, rows.subList(0, numRows), startOffset);
+     rows.removeRange(0, numRows);
+     startOffset += numRows;
+     return result;
+diff --git a/service/src/java/org/apache/hive/service/cli/TableSchema.java b/service/src/java/org/apache/hive/service/cli/TableSchema.java
+index d052268..ee019bc 100644
+--- a/service/src/java/org/apache/hive/service/cli/TableSchema.java
++++ b/service/src/java/org/apache/hive/service/cli/TableSchema.java
+@@ -82,10 +82,10 @@ public TTableSchema toTTableSchema() {
+     return tTableSchema;
+   }
+ 
+-  public TypeDescriptor[] toTypeDescriptors() {
+-    TypeDescriptor[] types = new TypeDescriptor[columns.size()];
++  public Type[] toTypes() {
++    Type[] types = new Type[columns.size()];
+     for (int i = 0; i < types.length; i++) {
+-      types[i] = columns.get(i).getTypeDescriptor();
++      types[i] = columns.get(i).getType();
+     }
+     return types;
+   }
+-- 
+1.7.9.5
+

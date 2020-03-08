@@ -1,0 +1,68 @@
+From 49946e23caf2b37172e31a573f8396ee26cf6bff Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Thu, 17 Aug 2017 13:36:25 +0200
+Subject: [PATCH 1300/1363] CLOUDERA-BUILD CDH-57061: Missing staging file in
+ MR execution
+
+Change-Id: I2f09426107906f7c1eea871628c19bc7e2664206
+(cherry picked from commit d31c2a28bc6aa045df159e5ba63b996ffa7cd813)
+---
+ data/conf/hive-site.xml                   |    6 ++++++
+ data/conf/spark/standalone/hive-site.xml  |    6 ++++++
+ data/conf/spark/yarn-client/hive-site.xml |    6 ++++++
+ 3 files changed, 18 insertions(+)
+
+diff --git a/data/conf/hive-site.xml b/data/conf/hive-site.xml
+index 437daa4..4784803 100644
+--- a/data/conf/hive-site.xml
++++ b/data/conf/hive-site.xml
+@@ -38,6 +38,12 @@
+   <description>A base for other temporary directories.</description>
+ </property>
+ 
++<property>
++  <name>mapreduce.jobtracker.staging.root.dir</name>
++  <value>${test.tmp.dir}/hadoop-tmp</value>
++  <description>A base for other temporary directories.</description>
++</property>
++
+ <!--
+ <property>
+   <name>hive.exec.reducers.max</name>
+diff --git a/data/conf/spark/standalone/hive-site.xml b/data/conf/spark/standalone/hive-site.xml
+index f6e6db1..aa6ff64 100644
+--- a/data/conf/spark/standalone/hive-site.xml
++++ b/data/conf/spark/standalone/hive-site.xml
+@@ -33,6 +33,12 @@
+ </property>
+ 
+ <property>
++  <name>mapreduce.jobtracker.staging.root.dir</name>
++  <value>${test.tmp.dir}/hadoop-tmp</value>
++  <description>A base for other temporary directories.</description>
++</property>
++
++<property>
+   <name>hive.exec.scratchdir</name>
+   <value>${test.tmp.dir}/scratchdir</value>
+   <description>Scratch space for Hive jobs</description>
+diff --git a/data/conf/spark/yarn-client/hive-site.xml b/data/conf/spark/yarn-client/hive-site.xml
+index 21f195b..a4a1a01 100644
+--- a/data/conf/spark/yarn-client/hive-site.xml
++++ b/data/conf/spark/yarn-client/hive-site.xml
+@@ -33,6 +33,12 @@
+ </property>
+ 
+ <property>
++  <name>mapreduce.jobtracker.staging.root.dir</name>
++  <value>${test.tmp.dir}/hadoop-tmp</value>
++  <description>A base for other temporary directories.</description>
++</property>
++
++<property>
+   <name>hive.exec.scratchdir</name>
+   <value>${test.tmp.dir}/scratchdir</value>
+   <description>Scratch space for Hive jobs</description>
+-- 
+1.7.9.5
+

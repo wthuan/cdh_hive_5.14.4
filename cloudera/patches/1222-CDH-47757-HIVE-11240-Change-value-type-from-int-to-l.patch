@@ -1,0 +1,31 @@
+From 7ac842adfa6e3b441019dca0570c0dee1784c186 Mon Sep 17 00:00:00 2001
+From: Ferdinand Xu <cheng.a.xu@intel.com>
+Date: Tue, 14 Jul 2015 02:45:54 -0400
+Subject: [PATCH 1222/1363] CDH-47757 HIVE-11240 Change value type from int to
+ long for
+ HiveConf.ConfVars.METASTORESERVERMAXMESSAGESIZE(Ferdinand
+ Xu, reviewed by Xuefu Zhang)
+
+(cherry picked from commit 21aecbcfff21d33f1785221be73f880d728632fa)
+
+Change-Id: If4b520ce69cd9b41a89b0de844af1744b0d315b9
+---
+ .../hadoop/hive/metastore/HiveMetaStore.java       |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java
+index 603f744..bfe72f8 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java
+@@ -6535,7 +6535,7 @@ public static void startMetaStore(int port, HadoopThriftAuthBridge bridge,
+       // Server will create new threads up to max as necessary. After an idle
+       // period, it will destroy threads to keep the number of threads in the
+       // pool to min.
+-      int maxMessageSize = conf.getIntVar(HiveConf.ConfVars.METASTORESERVERMAXMESSAGESIZE);
++      long maxMessageSize = conf.getIntVar(HiveConf.ConfVars.METASTORESERVERMAXMESSAGESIZE);
+       int minWorkerThreads = conf.getIntVar(HiveConf.ConfVars.METASTORESERVERMINTHREADS);
+       int maxWorkerThreads = conf.getIntVar(HiveConf.ConfVars.METASTORESERVERMAXTHREADS);
+       boolean tcpKeepAlive = conf.getBoolVar(HiveConf.ConfVars.METASTORE_TCP_KEEP_ALIVE);
+-- 
+1.7.9.5
+

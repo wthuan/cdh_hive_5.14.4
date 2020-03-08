@@ -1,0 +1,37 @@
+From 198f8394ac4b9506d71fdeb054052871f584716e Mon Sep 17 00:00:00 2001
+From: Nemon Lou <loudongfeng@huawei.com>
+Date: Mon, 4 Jul 2016 13:03:44 -0700
+Subject: [PATCH 1275/1363] HIVE-10815 : Let HiveMetaStoreClient Choose
+ MetaStore Randomly (Nemon Lou via Thejas Nair)
+
+Change-Id: Id5d07c946f88c989290892aed7fff26189e82c5f
+---
+ .../hadoop/hive/metastore/HiveMetaStoreClient.java |    5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStoreClient.java b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStoreClient.java
+index 7cdb082..a770b0b 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStoreClient.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStoreClient.java
+@@ -34,6 +34,7 @@
+ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.Collection;
++import java.util.Collections;
+ import java.util.HashMap;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+@@ -231,6 +232,10 @@ public HiveMetaStoreClient(HiveConf conf, HiveMetaHookLoader hookLoader)
+           metastoreUris[i++] = tmpUri;
+ 
+         }
++        // make metastore URIS random
++        List uriList = Arrays.asList(metastoreUris);
++        Collections.shuffle(uriList);
++        metastoreUris = (URI[]) uriList.toArray();
+       } catch (IllegalArgumentException e) {
+         throw (e);
+       } catch (Exception e) {
+-- 
+1.7.9.5
+

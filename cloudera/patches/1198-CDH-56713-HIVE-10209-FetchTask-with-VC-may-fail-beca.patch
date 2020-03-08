@@ -1,0 +1,37 @@
+From 775aa5b98e66d7b5b7b424eac8458d7545888b7e Mon Sep 17 00:00:00 2001
+From: Sun Chao <sunchao@apache.org>
+Date: Thu, 9 Apr 2015 22:30:15 +0000
+Subject: [PATCH 1198/1363] CDH-56713: HIVE-10209 - FetchTask with VC may fail
+ because ExecMapper.done is true (Chao)
+
+git-svn-id: https://svn.apache.org/repos/asf/hive/branches/spark@1672509 13f79535-47bb-0310-9956-ffa450edef68
+(cherry picked from commit 1ac630c27bce036e3ce43fca8ee8507e9d8ed720)
+
+Change-Id: Icc627a5ccfa7b1fd783473b19559577a8e354e02
+---
+ .../org/apache/hadoop/hive/ql/exec/FetchTask.java  |    2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/FetchTask.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/FetchTask.java
+index c735be1..31aa3dc 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/FetchTask.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/FetchTask.java
+@@ -28,6 +28,7 @@
+ import org.apache.hadoop.hive.ql.CommandNeedRetryException;
+ import org.apache.hadoop.hive.ql.DriverContext;
+ import org.apache.hadoop.hive.ql.QueryPlan;
++import org.apache.hadoop.hive.ql.exec.mr.ExecMapper;
+ import org.apache.hadoop.hive.ql.io.HiveInputFormat;
+ import org.apache.hadoop.hive.ql.metadata.HiveException;
+ import org.apache.hadoop.hive.ql.metadata.VirtualColumn;
+@@ -79,6 +80,7 @@ public void initialize(HiveConf conf, QueryPlan queryPlan, DriverContext ctx) {
+       fetch = new FetchOperator(work, job, source, getVirtualColumns(source));
+       source.initialize(conf, new ObjectInspector[]{fetch.getOutputObjectInspector()});
+       totalRows = 0;
++      ExecMapper.setDone(false);
+ 
+     } catch (Exception e) {
+       // Bail out ungracefully - we should never hit
+-- 
+1.7.9.5
+

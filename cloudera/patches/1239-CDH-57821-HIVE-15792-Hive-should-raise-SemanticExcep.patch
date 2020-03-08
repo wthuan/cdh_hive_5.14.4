@@ -1,0 +1,180 @@
+From 5a1a1b00952ef3057c5b71e27dd13480a85df1b4 Mon Sep 17 00:00:00 2001
+From: Nanda kumar <nandakumar131@gmail.com>
+Date: Wed, 8 Feb 2017 19:49:24 -0800
+Subject: [PATCH 1239/1363] CDH-57821: HIVE-15792 : Hive should raise
+ SemanticException when LPAD/RPAD pad character's
+ length is 0 (Nanda Kumar via Thejas Nair)
+
+(cherry picked from commit 27613f0c730842b0a0d69d2fb4ad0eda6d947baf)
+
+Change-Id: I828808170e099d81fb93cec4bed267b642c89b0e
+---
+ .../hive/ql/udf/generic/GenericUDFBasePad.java     |    2 +-
+ .../hadoop/hive/ql/udf/generic/GenericUDFLpad.java |    8 ++++++--
+ .../hadoop/hive/ql/udf/generic/GenericUDFRpad.java |    7 ++++++-
+ .../hive/ql/udf/generic/TestGenericUDFLpad.java    |    9 +++++++--
+ .../hive/ql/udf/generic/TestGenericUDFRpad.java    |   11 +++++++----
+ ql/src/test/results/clientpositive/udf_lpad.q.out  |    6 +++++-
+ ql/src/test/results/clientpositive/udf_rpad.q.out  |    6 +++++-
+ 7 files changed, 37 insertions(+), 12 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFBasePad.java b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFBasePad.java
+index 3904ca4..70db1e7 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFBasePad.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFBasePad.java
+@@ -64,7 +64,7 @@ public Object evaluate(DeferredObject[] arguments) throws HiveException {
+     Text str = (Text) converter1.convert(valObject1);
+     IntWritable lenW = (IntWritable) converter2.convert(valObject2);
+     Text pad = (Text) converter3.convert(valObject3);
+-    if (str == null || pad == null || lenW == null) {
++    if (str == null || pad == null || lenW == null || pad.toString().isEmpty()) {
+       return null;
+     }
+     int len = lenW.get();
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFLpad.java b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFLpad.java
+index f15a869..194dde2 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFLpad.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFLpad.java
+@@ -29,10 +29,14 @@
+     value = "_FUNC_(str, len, pad) - Returns str, left-padded with pad to a length of len",
+     extended = "If str is longer than len, the return value is shortened to "
+     + "len characters.\n"
++    + "In case of empty pad string, the return value is null.\n"
+     + "Example:\n"
+     + "  > SELECT _FUNC_('hi', 5, '??') FROM src LIMIT 1;\n"
+-    + "  '???hi'"
+-    + "  > SELECT _FUNC_('hi', 1, '??') FROM src LIMIT 1;\n" + "  'h'")
++    + "  '???hi'\n"
++    + "  > SELECT _FUNC_('hi', 1, '??') FROM src LIMIT 1;\n"
++    + "  'h'\n"
++    + "  > SELECT _FUNC_('hi', 5, '') FROM src LIMIT 1;\n"
++    + "  null")
+ public class GenericUDFLpad extends GenericUDFBasePad {
+   public GenericUDFLpad() {
+     super("lpad");
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFRpad.java b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFRpad.java
+index b512332..b08471e 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFRpad.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/udf/generic/GenericUDFRpad.java
+@@ -29,9 +29,14 @@
+     "Returns str, right-padded with pad to a length of len",
+     extended = "If str is longer than len, the return value is shortened to "
+     + "len characters.\n"
++    + "In case of empty pad string, the return value is null.\n"
+     + "Example:\n"
+     + "  > SELECT _FUNC_('hi', 5, '??') FROM src LIMIT 1;\n"
+-    + "  'hi???'" + "  > SELECT _FUNC_('hi', 1, '??') FROM src LIMIT 1;\n" + "  'h'")
++    + "  'hi???'\n"
++    + "  > SELECT _FUNC_('hi', 1, '??') FROM src LIMIT 1;\n"
++    + "  'h'\n"
++    + "  > SELECT _FUNC_('hi', 5, '') FROM src LIMIT 1;\n"
++    + "  null")
+ public class GenericUDFRpad extends GenericUDFBasePad {
+   public GenericUDFRpad() {
+     super("rpad");
+diff --git a/ql/src/test/org/apache/hadoop/hive/ql/udf/generic/TestGenericUDFLpad.java b/ql/src/test/org/apache/hadoop/hive/ql/udf/generic/TestGenericUDFLpad.java
+index 6344417..1d6d5eb 100644
+--- a/ql/src/test/org/apache/hadoop/hive/ql/udf/generic/TestGenericUDFLpad.java
++++ b/ql/src/test/org/apache/hadoop/hive/ql/udf/generic/TestGenericUDFLpad.java
+@@ -41,6 +41,7 @@ public void testLpad() throws HiveException {
+     udf.initialize(arguments);
+     runAndVerify("hi", 5, "??", "???hi", udf);
+     runAndVerify("hi", 1, "??", "h", udf);
++    runAndVerify("hi", 3, "", null, udf);
+   }
+ 
+   private void runAndVerify(String str, int len, String pad, String expResult, GenericUDF udf)
+@@ -49,7 +50,11 @@ private void runAndVerify(String str, int len, String pad, String expResult, Gen
+     DeferredObject valueObj2 = new DeferredJavaObject(new IntWritable(len));
+     DeferredObject valueObj3 = new DeferredJavaObject(new Text(pad));
+     DeferredObject[] args = { valueObj1, valueObj2, valueObj3 };
+-    Text output = (Text) udf.evaluate(args);
+-    assertEquals("lpad() test ", expResult, output.toString());
++    Object output = udf.evaluate(args);
++    if(expResult != null) {
++      assertEquals("lpad() test ", expResult, output.toString());
++    } else {
++      assertNull("lpad() test ", output);
++    }
+   }
+ }
+diff --git a/ql/src/test/org/apache/hadoop/hive/ql/udf/generic/TestGenericUDFRpad.java b/ql/src/test/org/apache/hadoop/hive/ql/udf/generic/TestGenericUDFRpad.java
+index 71ffcb9..e580e06 100644
+--- a/ql/src/test/org/apache/hadoop/hive/ql/udf/generic/TestGenericUDFRpad.java
++++ b/ql/src/test/org/apache/hadoop/hive/ql/udf/generic/TestGenericUDFRpad.java
+@@ -18,10 +18,8 @@
+ package org.apache.hadoop.hive.ql.udf.generic;
+ 
+ import org.apache.hadoop.hive.ql.metadata.HiveException;
+-import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
+ import org.apache.hadoop.hive.ql.udf.generic.GenericUDF.DeferredJavaObject;
+ import org.apache.hadoop.hive.ql.udf.generic.GenericUDF.DeferredObject;
+-import org.apache.hadoop.hive.ql.udf.generic.GenericUDFLpad;
+ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+ import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
+ import org.apache.hadoop.io.IntWritable;
+@@ -41,6 +39,7 @@ public void testLpad() throws HiveException {
+     udf.initialize(arguments);
+     runAndVerify("hi", 5, "??", "???hi", udf);
+     runAndVerify("hi", 1, "??", "h", udf);
++    runAndVerify("hi", 3, "", null, udf);
+   }
+ 
+   private void runAndVerify(String str, int len, String pad, String expResult, GenericUDF udf)
+@@ -49,7 +48,11 @@ private void runAndVerify(String str, int len, String pad, String expResult, Gen
+     DeferredObject valueObj2 = new DeferredJavaObject(new IntWritable(len));
+     DeferredObject valueObj3 = new DeferredJavaObject(new Text(pad));
+     DeferredObject[] args = { valueObj1, valueObj2, valueObj3 };
+-    Text output = (Text) udf.evaluate(args);
+-    assertEquals("lpad() test ", expResult, output.toString());
++    Object output = udf.evaluate(args);
++    if(expResult != null) {
++      assertEquals("rpad() test ", expResult, output.toString());
++    } else {
++      assertNull("rpad() test ", output);
++    }
+   }
+ }
+diff --git a/ql/src/test/results/clientpositive/udf_lpad.q.out b/ql/src/test/results/clientpositive/udf_lpad.q.out
+index 1f7c06a..8625d2d 100644
+--- a/ql/src/test/results/clientpositive/udf_lpad.q.out
++++ b/ql/src/test/results/clientpositive/udf_lpad.q.out
+@@ -9,10 +9,14 @@ POSTHOOK: query: DESCRIBE FUNCTION EXTENDED lpad
+ POSTHOOK: type: DESCFUNCTION
+ lpad(str, len, pad) - Returns str, left-padded with pad to a length of len
+ If str is longer than len, the return value is shortened to len characters.
++In case of empty pad string, the return value is null.
+ Example:
+   > SELECT lpad('hi', 5, '??') FROM src LIMIT 1;
+-  '???hi'  > SELECT lpad('hi', 1, '??') FROM src LIMIT 1;
++  '???hi'
++  > SELECT lpad('hi', 1, '??') FROM src LIMIT 1;
+   'h'
++  > SELECT lpad('hi', 5, '') FROM src LIMIT 1;
++  null
+ PREHOOK: query: EXPLAIN SELECT
+   lpad('hi', 1, '?'),
+   lpad('hi', 5, '.'),
+diff --git a/ql/src/test/results/clientpositive/udf_rpad.q.out b/ql/src/test/results/clientpositive/udf_rpad.q.out
+index 2cf5a93..3144a6d 100644
+--- a/ql/src/test/results/clientpositive/udf_rpad.q.out
++++ b/ql/src/test/results/clientpositive/udf_rpad.q.out
+@@ -9,10 +9,14 @@ POSTHOOK: query: DESCRIBE FUNCTION EXTENDED rpad
+ POSTHOOK: type: DESCFUNCTION
+ rpad(str, len, pad) - Returns str, right-padded with pad to a length of len
+ If str is longer than len, the return value is shortened to len characters.
++In case of empty pad string, the return value is null.
+ Example:
+   > SELECT rpad('hi', 5, '??') FROM src LIMIT 1;
+-  'hi???'  > SELECT rpad('hi', 1, '??') FROM src LIMIT 1;
++  'hi???'
++  > SELECT rpad('hi', 1, '??') FROM src LIMIT 1;
+   'h'
++  > SELECT rpad('hi', 5, '') FROM src LIMIT 1;
++  null
+ PREHOOK: query: EXPLAIN SELECT
+   rpad('hi', 1, '?'),
+   rpad('hi', 5, '.'),
+-- 
+1.7.9.5
+

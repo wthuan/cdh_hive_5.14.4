@@ -1,0 +1,135 @@
+From 6a284b4ec56f9e51d516c66c8dd78edb139cfade Mon Sep 17 00:00:00 2001
+From: Prasanth Jayachandran <prasanthj@apache.org>
+Date: Fri, 11 Aug 2017 15:37:56 -0700
+Subject: [PATCH 1297/1363] CDH-60274: HIVE-17274: RowContainer spills for
+ timestamp column throws exception (Prasanth
+ Jayachandran reviewed by Matt McCline)
+
+(cherry picked from commit 51067945cc1bcd4deeb34ca93c9f73efed704d4a)
+
+Change-Id: I8137c859a32190f8785047e2c83809299d607e15
+---
+ .../hive/ql/exec/persistence/RowContainer.java     |   12 +++-
+ .../hive/ql/exec/persistence/TestRowContainer.java |   75 ++++++++++++++++++++
+ 2 files changed, 86 insertions(+), 1 deletion(-)
+ create mode 100644 ql/src/test/org/apache/hadoop/hive/ql/exec/persistence/TestRowContainer.java
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/persistence/RowContainer.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/persistence/RowContainer.java
+index f2a2bc7..b1e3c54 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/persistence/RowContainer.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/persistence/RowContainer.java
+@@ -25,6 +25,9 @@
+ 
+ import org.apache.commons.logging.Log;
+ import org.apache.commons.logging.LogFactory;
++import org.apache.commons.codec.digest.DigestUtils;
++import org.apache.hadoop.fs.CommonConfigurationKeysPublic;
++import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+ import org.apache.hadoop.conf.Configuration;
+ import org.apache.hadoop.fs.FileSystem;
+ import org.apache.hadoop.fs.LocalFileSystem;
+@@ -502,7 +505,10 @@ protected void setupWriter() throws HiveException {
+ 
+       String suffix = ".tmp";
+       if (this.keyObject != null) {
+-        suffix = "." + this.keyObject.toString() + suffix;
++        String keyObjectStr = this.keyObject.toString();
++        String md5Str = DigestUtils.md5Hex(keyObjectStr.toString());
++        LOG.info("Using md5Str: " + md5Str + " for keyObject: " + keyObjectStr);
++        suffix = "." + md5Str + suffix;
+       }
+ 
+       while (true) {
+@@ -599,4 +605,8 @@ protected void close() throws HiveException {
+   protected int getLastActualSplit() {
+     return actualSplitNum - 1;
+   }
++
++  public int getNumFlushedBlocks() {
++    return numFlushedBlocks;
++  }
+ }
+diff --git a/ql/src/test/org/apache/hadoop/hive/ql/exec/persistence/TestRowContainer.java b/ql/src/test/org/apache/hadoop/hive/ql/exec/persistence/TestRowContainer.java
+new file mode 100644
+index 0000000..76ab315
+--- /dev/null
++++ b/ql/src/test/org/apache/hadoop/hive/ql/exec/persistence/TestRowContainer.java
+@@ -0,0 +1,75 @@
++/**
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ * http://www.apache.org/licenses/LICENSE-2.0
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.hadoop.hive.ql.exec.persistence;
++
++import static org.junit.Assert.assertEquals;
++
++import java.io.IOException;
++import java.sql.Timestamp;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Properties;
++
++import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.hive.ql.metadata.HiveException;
++import org.apache.hadoop.hive.serde.serdeConstants;
++import org.apache.hadoop.hive.serde2.SerDeException;
++import org.apache.hadoop.hive.serde2.SerDeUtils;
++import org.apache.hadoop.hive.serde2.io.TimestampWritable;
++import org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe;
++import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
++import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
++import org.apache.hadoop.io.Text;
++import org.apache.hadoop.io.Writable;
++import org.junit.Test;
++
++import com.google.common.collect.Lists;
++
++public class TestRowContainer {
++
++  @Test
++  public void testSpillTimestamp() throws HiveException, SerDeException, IOException {
++    int blockSize = 10;
++    Configuration cfg = new Configuration();
++    RowContainer result = new RowContainer(blockSize, cfg, null);
++    LazyBinarySerDe serde = new LazyBinarySerDe();
++    Properties props = new Properties();
++    props.put(serdeConstants.LIST_COLUMNS, "x");
++    props.put(serdeConstants.LIST_COLUMN_TYPES, "array<string>");
++    SerDeUtils.initializeSerDe(serde, null, props, null);
++    result.setSerDe(serde,
++      ObjectInspectorUtils.getStandardObjectInspector(serde.getObjectInspector()));
++    result.setTableDesc(
++      PTFRowContainer.createTableDesc((StructObjectInspector) serde.getObjectInspector()));
++    TimestampWritable key = new TimestampWritable(new Timestamp(10));
++    result.setKeyObject(Lists.newArrayList(key));
++    List<Writable> row;
++    // will trigger 2 spills
++    for (int i = 0; i <= blockSize * 2; i++) {
++      row = new ArrayList<Writable>();
++      row.add(new Text("" + i));
++      result.addRow(row);
++    }
++    assertEquals(2, result.getNumFlushedBlocks());
++    result.setKeyObject(null);
++    assertEquals(Lists.newArrayList(0).toString(), result.first().get(0).toString());
++    for (int i = 1; i < result.rowCount() - 1; i++) {
++      assertEquals(Lists.newArrayList(i).toString(), result.next().get(0).toString());
++    }
++    result.close();
++  }
++}
+-- 
+1.7.9.5
+

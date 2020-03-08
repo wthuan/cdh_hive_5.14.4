@@ -1,0 +1,44 @@
+From d058a20bb75f80a3035e731beed69455e15fce21 Mon Sep 17 00:00:00 2001
+From: Aihua Xu <aihuaxu@apache.org>
+Date: Thu, 1 Dec 2016 09:34:02 -0500
+Subject: [PATCH 1223/1363] CDH-47757 HIVE-15321: Change to read as long for
+ HiveConf.ConfVars.METASTORESERVERMAXMESSAGESIZE
+ (Aihua Xu, reviewed by Yongzhi Chen)
+
+(cherry picked from commit 803717bc7644c7e696451e91dec53ab62d10f5ee)
+
+Change-Id: Ia1616a0e83589527b5fc4b22869d5dca367af3db
+---
+ .../java/org/apache/hadoop/hive/conf/HiveConf.java |    2 +-
+ .../hadoop/hive/metastore/HiveMetaStore.java       |    2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java b/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+index 17dcfbc..973646c 100644
+--- a/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
++++ b/common/src/java/org/apache/hadoop/hive/conf/HiveConf.java
+@@ -421,7 +421,7 @@ public void setSparkConfigUpdated(boolean isSparkConfigUpdated) {
+         "the connection URL, before the next metastore query that accesses the\n" +
+         "datastore. Once reloaded, this value is reset to false. Used for\n" +
+         "testing only."),
+-    METASTORESERVERMAXMESSAGESIZE("hive.metastore.server.max.message.size", 100*1024*1024,
++    METASTORESERVERMAXMESSAGESIZE("hive.metastore.server.max.message.size", 100*1024*1024L,
+         "Maximum message size in bytes a HMS will accept."),
+     METASTORESERVERMINTHREADS("hive.metastore.server.min.threads", 200,
+         "Minimum number of worker threads in the Thrift server's pool."),
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java
+index bfe72f8..c97245e 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java
+@@ -6535,7 +6535,7 @@ public static void startMetaStore(int port, HadoopThriftAuthBridge bridge,
+       // Server will create new threads up to max as necessary. After an idle
+       // period, it will destroy threads to keep the number of threads in the
+       // pool to min.
+-      long maxMessageSize = conf.getIntVar(HiveConf.ConfVars.METASTORESERVERMAXMESSAGESIZE);
++      long maxMessageSize = conf.getLongVar(HiveConf.ConfVars.METASTORESERVERMAXMESSAGESIZE);
+       int minWorkerThreads = conf.getIntVar(HiveConf.ConfVars.METASTORESERVERMINTHREADS);
+       int maxWorkerThreads = conf.getIntVar(HiveConf.ConfVars.METASTORESERVERMAXTHREADS);
+       boolean tcpKeepAlive = conf.getBoolVar(HiveConf.ConfVars.METASTORE_TCP_KEEP_ALIVE);
+-- 
+1.7.9.5
+

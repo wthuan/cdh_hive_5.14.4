@@ -1,0 +1,197 @@
+From 43a8641a28485d1b6b47124b64de9c96c5e38935 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Fri, 6 Oct 2017 11:49:52 +0200
+Subject: [PATCH 1302/1363] CDH-60170 HIVE-17569: Compare filtered output
+ files in BeeLine tests (Marta Kuczora via Peter
+ Vary)
+
+(cherry picked from commit 593ca11e44c033f986839a23172c21406ec669cc)
+
+Change-Id: I5767345b20a8cd657f7f3ae3fd291e7435238c47
+---
+ .../hadoop/hive/cli/control/CoreBeeLineDriver.java |   25 ++++++---
+ .../main/java/org/apache/hive/beeline/QFile.java   |   59 +++++++++++++++++++-
+ 2 files changed, 74 insertions(+), 10 deletions(-)
+
+diff --git a/itests/util/src/main/java/org/apache/hadoop/hive/cli/control/CoreBeeLineDriver.java b/itests/util/src/main/java/org/apache/hadoop/hive/cli/control/CoreBeeLineDriver.java
+index 9dfc253..1fdce17 100644
+--- a/itests/util/src/main/java/org/apache/hadoop/hive/cli/control/CoreBeeLineDriver.java
++++ b/itests/util/src/main/java/org/apache/hadoop/hive/cli/control/CoreBeeLineDriver.java
+@@ -88,17 +88,20 @@ private static MiniHS2 createMiniServer() throws Exception {
+     return miniHS2;
+   }
+ 
++  boolean getBooleanPropertyValue(String name, boolean defaultValue) {
++    String value = System.getProperty(name);
++    if (value == null) {
++      return defaultValue;
++    }
++    return Boolean.parseBoolean(value);
++  }
++
+   @Override
+   @BeforeClass
+   public void beforeClass() throws Exception {
+-    String testOutputOverwrite = System.getProperty("test.output.overwrite");
+-    if (testOutputOverwrite != null && "true".equalsIgnoreCase(testOutputOverwrite)) {
+-      overwrite = true;
+-    }
+-    String testRewriteSourceTables = System.getProperty("test.rewrite.source.tables");
+-    if (testRewriteSourceTables != null && "false".equalsIgnoreCase(testRewriteSourceTables)) {
+-      rewriteSourceTables = false;
+-    }
++    overwrite = getBooleanPropertyValue("test.output.overwrite", Boolean.FALSE);
++
++    rewriteSourceTables = getBooleanPropertyValue("test.rewrite.source.tables", Boolean.TRUE);
+ 
+     String beeLineUrl = System.getProperty("test.beeline.url");
+     if (StringUtils.isEmpty(beeLineUrl)) {
+@@ -112,11 +115,15 @@ public void beforeClass() throws Exception {
+         .setUsername(System.getProperty("test.beeline.user", "user"))
+         .setPassword(System.getProperty("test.beeline.password", "password"));
+ 
++    boolean comparePortable =
++        getBooleanPropertyValue("test.beeline.compare.portable", Boolean.FALSE);
++
+     fileBuilder = new QFileBuilder()
+         .setLogDirectory(logDirectory)
+         .setQueryDirectory(queryDirectory)
+         .setResultsDirectory(resultsDirectory)
+-        .setRewriteSourceTables(rewriteSourceTables);
++        .setRewriteSourceTables(rewriteSourceTables)
++        .setComparePortable(comparePortable);
+ 
+     runInfraScript(initScript, new File(logDirectory, "init.beeline"),
+         new File(logDirectory, "init.raw"));
+diff --git a/itests/util/src/main/java/org/apache/hive/beeline/QFile.java b/itests/util/src/main/java/org/apache/hive/beeline/QFile.java
+index 418f98d..1b0f24c 100644
+--- a/itests/util/src/main/java/org/apache/hive/beeline/QFile.java
++++ b/itests/util/src/main/java/org/apache/hive/beeline/QFile.java
+@@ -68,6 +68,8 @@
+ 
+   private static final String MASK_PATTERN = "#### A masked pattern was here ####\n";
+ 
++  private static final String[] COMMANDS_TO_REMOVE = {"EXPLAIN", "DESCRIBE[\\s\\n]+EXTENDED", "DESCRIBE[\\s\\n]+FORMATTED"};
++
+   private String name;
+   private File inputFile;
+   private File rawOutputFile;
+@@ -77,9 +79,11 @@
+   private File beforeExecuteLogFile;
+   private File afterExecuteLogFile;
+   private static RegexFilterSet staticFilterSet = getStaticFilterSet();
++  private static RegexFilterSet portableFilterSet = getPortableFilterSet();
+   private RegexFilterSet specificFilterSet;
+   private boolean rewriteSourceTables;
+   private Converter converter;
++  private boolean comparePortable;
+ 
+   private QFile() {}
+ 
+@@ -193,6 +197,9 @@ private String sortInputOutput(String source) {
+ 
+   public void filterOutput() throws IOException {
+     String output = FileUtils.readFileToString(rawOutputFile, "UTF-8");
++    if (comparePortable) {
++      output = portableFilterSet.filter(output);
++    }
+     output = staticFilterSet.filter(specificFilterSet.filter(output));
+     if (rewriteSourceTables) {
+       output = sortInputOutput(revertReplaceTableNames(output));
+@@ -282,6 +289,11 @@ public RegexFilterSet addFilter(String regex, String replacement) {
+       return this;
+     }
+ 
++    public RegexFilterSet addFilter(String regex, int flags, String replacement) {
++      regexFilters.add(new Filter(Pattern.compile(regex, flags), replacement));
++      return this;
++    }
++
+     public String filter(String input) {
+       for (Filter filter : regexFilters) {
+         input = filter.pattern.matcher(input).replaceAll(filter.replacement);
+@@ -310,6 +322,22 @@ private static RegexFilterSet getStaticFilterSet() {
+   }
+ 
+   /**
++   * If the test.beeline.compare.portable system property is true,
++   * the commands, listed in the COMMANDS_TO_REMOVE array will be removed
++   * from the out files before comparison.
++   * @return The regex filters to apply to remove the commands from the out files.
++   */
++  private static RegexFilterSet getPortableFilterSet() {
++    RegexFilterSet filterSet = new RegexFilterSet();
++    String regex = "PREHOOK: query:\\s+%s[\\n\\s]+.*?(?=(PREHOOK: query:|$))";
++    for (String command : COMMANDS_TO_REMOVE) {
++      filterSet.addFilter(String.format(regex, command),
++          Pattern.DOTALL | Pattern.CASE_INSENSITIVE, "");
++    }
++    return filterSet;
++  }
++
++  /**
+    * Builder to generate QFile objects. After initializing the builder it is possible the
+    * generate the next QFile object using it's name only.
+    */
+@@ -318,6 +346,7 @@ private static RegexFilterSet getStaticFilterSet() {
+     private File logDirectory;
+     private File resultsDirectory;
+     private boolean rewriteSourceTables;
++    private boolean comparePortable;
+ 
+     public QFileBuilder() {
+     }
+@@ -342,13 +371,17 @@ public QFileBuilder setRewriteSourceTables(boolean rewriteSourceTables) {
+       return this;
+     }
+ 
++    public QFileBuilder setComparePortable(boolean compareProtable) {
++      this.comparePortable = compareProtable;
++      return this;
++    }
++
+     public QFile getQFile(String name) throws IOException {
+       QFile result = new QFile();
+       result.name = name;
+       result.inputFile = new File(queryDirectory, name + ".q");
+       result.rawOutputFile = new File(logDirectory, name + ".q.out.raw");
+       result.outputFile = new File(logDirectory, name + ".q.out");
+-      result.expectedOutputFile = new File(resultsDirectory, name + ".q.out");
+       result.logFile = new File(logDirectory, name + ".q.beeline");
+       result.beforeExecuteLogFile = new File(logDirectory, name + ".q.beforeExecute.log");
+       result.afterExecuteLogFile = new File(logDirectory, name + ".q.afterExecute.log");
+@@ -370,7 +403,31 @@ public QFile getQFile(String name) throws IOException {
+       if (input.contains("-- SORT_AND_HASH_QUERY_RESULTS")) {
+         result.converter = Converter.SORT_AND_HASH_QUERY_RESULTS;
+       }
++
++      result.comparePortable = comparePortable;
++      result.expectedOutputFile = prepareExpectedOutputFile(name, comparePortable);
+       return result;
+     }
++
++    /**
++     * Prepare the output file and apply the necessary filters on it.
++     * @param name
++     * @param comparePortable If this parameter is true, the commands, listed in the
++     * COMMANDS_TO_REMOVE array will be filtered out in the output file.
++     * @return The expected output file.
++     * @throws IOException
++     */
++    private File prepareExpectedOutputFile (String name, boolean comparePortable) throws IOException {
++      if (!comparePortable) {
++        return new File(resultsDirectory, name + ".q.out");
++      } else {
++        File rawExpectedOutputFile = new File(resultsDirectory, name + ".q.out");
++        String rawOutput = FileUtils.readFileToString(rawExpectedOutputFile, "UTF-8");
++        rawOutput = portableFilterSet.filter(rawOutput);
++        File expectedOutputFile = new File(logDirectory, name + ".q.out.portable");
++        FileUtils.writeStringToFile(expectedOutputFile, rawOutput);
++        return expectedOutputFile;
++      }
++    }
+   }
+ }
+-- 
+1.7.9.5
+

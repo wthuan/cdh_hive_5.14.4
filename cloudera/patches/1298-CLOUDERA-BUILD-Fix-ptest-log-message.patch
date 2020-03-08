@@ -1,0 +1,69 @@
+From fc34555afa97f496200b0e3d9b4243a78a88691b Mon Sep 17 00:00:00 2001
+From: Vihang Karajgaonkar <vihang@cloudera.com>
+Date: Wed, 11 Oct 2017 11:24:01 -0700
+Subject: [PATCH 1298/1363] CLOUDERA-BUILD : Fix ptest log message
+
+Change-Id: I1b808ae7c29d3b79e69c0ed28a09a566d08481c3
+---
+ .../apache/hive/ptest/execution/LocalCommand.java  |    2 +-
+ .../apache/hive/ptest/execution/ssh/SSHResult.java |   25 ++++++++++++++++----
+ 2 files changed, 22 insertions(+), 5 deletions(-)
+
+diff --git a/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/LocalCommand.java b/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/LocalCommand.java
+index e5894b5..095aa0b 100644
+--- a/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/LocalCommand.java
++++ b/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/LocalCommand.java
+@@ -42,7 +42,7 @@
+   public LocalCommand(Logger logger, OutputPolicy outputPolicy, String command) throws IOException {
+     this.commandId = localCommandCounter.incrementAndGet();
+     this.logger = logger;
+-    logger.info("Starting LocalCommandId={}: {}" + commandId, command);
++    logger.info("Starting LocalCommandId={}: {}", commandId, command);
+     stopwatch.start();
+     process = new ProcessBuilder().command(new String[] {"bash", "-c", command}).redirectErrorStream(true).start();
+     streamReader = new StreamReader(outputPolicy, process.getInputStream());
+diff --git a/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/ssh/SSHResult.java b/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/ssh/SSHResult.java
+index e31a2d4..3f09164 100644
+--- a/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/ssh/SSHResult.java
++++ b/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/ssh/SSHResult.java
+@@ -18,6 +18,8 @@
+  */
+ package org.apache.hive.ptest.execution.ssh;
+ 
++import org.apache.hive.ptest.execution.Constants;
++
+ public class SSHResult extends AbstractSSHResult {
+ 
+   private final String command;
+@@ -31,9 +33,24 @@ public String getCommand() {
+   }
+   @Override
+   public String toString() {
+-    return "SSHResult [command=" + command + ", getExitCode()="
+-        + getExitCode() + ", getException()=" + getException()
+-        + ", getUser()=" + getUser() + ", getHost()=" + getHost()
+-        + ", getInstance()=" + getInstance() + "]";
++    StringBuilder ret = new StringBuilder("SSHResult [command=");
++    ret.append(command)
++        .append(", getExitCode()=")
++        .append(getExitCode())
++        .append(", getException()=")
++        .append(getException())
++        .append(", getUser()=")
++        .append(getUser())
++        .append(", getHost()=")
++        .append(getHost())
++        .append(", getInstance()=")
++        .append(getInstance());
++    if(getExitCode() == Constants.EXIT_CODE_UNKNOWN
++        || getExitCode() == Constants.EXIT_CODE_EXCEPTION) {
++      ret.append(", getOutput()=")
++          .append(getOutput());
++    }
++    ret.append(" ]");
++    return ret.toString();
+   }
+ }
+-- 
+1.7.9.5
+

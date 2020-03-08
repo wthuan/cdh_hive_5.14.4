@@ -1,0 +1,40 @@
+From 23ccf1a20ea36bb7f74f5a7e0a6cf3c0c7e20324 Mon Sep 17 00:00:00 2001
+From: Sergio Pena <sergio.pena@cloudera.com>
+Date: Thu, 14 Sep 2017 13:50:36 -0500
+Subject: [PATCH 1282/1363] Revert "HIVE-10815 : Let HiveMetaStoreClient
+ Choose MetaStore Randomly (Nemon Lou via Thejas
+ Nair)"
+
+This reverts commit a2bf8ba00a5116c0be111ee26188897128c16a0f.
+
+Change-Id: I88f757ab7f5ede44728a61679fab7471d8ab9df6
+---
+ .../hadoop/hive/metastore/HiveMetaStoreClient.java |    5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStoreClient.java b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStoreClient.java
+index 4316682..c77d603 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStoreClient.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStoreClient.java
+@@ -34,7 +34,6 @@
+ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.Collection;
+-import java.util.Collections;
+ import java.util.HashMap;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+@@ -240,10 +239,6 @@ public HiveMetaStoreClient(HiveConf conf, HiveMetaHookLoader hookLoader)
+           );
+ 
+         }
+-        // make metastore URIS random
+-        List uriList = Arrays.asList(metastoreUris);
+-        Collections.shuffle(uriList);
+-        metastoreUris = (URI[]) uriList.toArray();
+       } catch (IllegalArgumentException e) {
+         throw (e);
+       } catch (Exception e) {
+-- 
+1.7.9.5
+

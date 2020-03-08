@@ -1,0 +1,28 @@
+From 29c322bf9a93666751387200acd32e82130db512 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Wed, 26 Jul 2017 10:46:24 +0200
+Subject: [PATCH 1212/1363] CDH-57043: HIVE-17052: Remove logging of predicate
+ filters (Yibing Shi, reviewed by Barna Zsombor
+ Klara, Peter Vary)
+
+Change-Id: I8bd8ecf772b432c2144ee9013853288138d14bad
+---
+ .../parquet/read/ParquetRecordReaderWrapper.java   |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/read/ParquetRecordReaderWrapper.java b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/read/ParquetRecordReaderWrapper.java
+index f4c5a7c..e593204 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/read/ParquetRecordReaderWrapper.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/read/ParquetRecordReaderWrapper.java
+@@ -151,7 +151,7 @@ public ParquetRecordReaderWrapper(
+     FilterPredicate p = ParquetFilterPredicateConverter.toFilterPredicate(sarg, schema);
+     if (p != null) {
+       // Filter may have sensitive information. Do not send to debug.
+-      LOG.debug("PARQUET predicate push down generated. Predicates = [" + p + "]");
++      LOG.debug("PARQUET predicate push down generated.");
+       ParquetInputFormat.setFilterPredicate(conf, p);
+       return FilterCompat.get(p);
+     } else {
+-- 
+1.7.9.5
+

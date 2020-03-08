@@ -1,0 +1,39 @@
+From c8b052538b3a3f3c31c25660fdfc94e493ff1fdb Mon Sep 17 00:00:00 2001
+From: Marta Kuczora <kuczoram@cloudera.com>
+Date: Thu, 10 Aug 2017 19:45:45 +0200
+Subject: [PATCH 1238/1363] CLOUDERA-BUILD: CDH-57609: Remove the rename
+ method from ProxyLocalFileSystem HADOOP-13867 got
+ backported to CDH which overrides the rename
+ method in FilterFileSystem, so no need to
+ override it in the ProxyLocalFileSystem any more.
+
+Change-Id: I32a50d2184e7b982d266f06e72c1704813cde2ea
+---
+ .../org/apache/hadoop/fs/ProxyLocalFileSystem.java |    6 ------
+ 1 file changed, 6 deletions(-)
+
+diff --git a/shims/common/src/main/java/org/apache/hadoop/fs/ProxyLocalFileSystem.java b/shims/common/src/main/java/org/apache/hadoop/fs/ProxyLocalFileSystem.java
+index 9da7427..228a972 100644
+--- a/shims/common/src/main/java/org/apache/hadoop/fs/ProxyLocalFileSystem.java
++++ b/shims/common/src/main/java/org/apache/hadoop/fs/ProxyLocalFileSystem.java
+@@ -22,7 +22,6 @@
+ import java.net.URI;
+ 
+ import org.apache.hadoop.conf.Configuration;
+-import org.apache.hadoop.fs.Options.Rename;
+ import org.apache.hadoop.util.Shell;
+ import org.apache.hadoop.hive.shims.ShimLoader;
+ import org.apache.hadoop.hive.shims.HadoopShims;
+@@ -70,9 +69,4 @@ public void initialize(URI name, Configuration conf) throws IOException {
+ 
+     fs.initialize(name, conf);
+   }
+-
+-  @Override
+-  public void rename(Path src, Path dst, Rename... options) throws IOException {
+-    fs.rename(src, dst, options);
+-  }
+ }
+-- 
+1.7.9.5
+

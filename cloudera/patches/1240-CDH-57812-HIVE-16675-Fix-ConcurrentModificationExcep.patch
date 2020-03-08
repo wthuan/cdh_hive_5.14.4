@@ -1,0 +1,55 @@
+From 667f08bc0fc716e2d10569538d0779f4cc65084c Mon Sep 17 00:00:00 2001
+From: Ferdinand Xu <cheng.a.xu@intel.com>
+Date: Thu, 25 May 2017 13:56:41 +0800
+Subject: [PATCH 1240/1363] CDH-57812 HIVE-16675: Fix
+ ConcurrentModificationException in
+ SparkClientImpl#startDriver (Zhang Liyun,
+ reviewed by Ferdinand Xu)
+
+(cherry picked from commit cc78d037987b5683ff731c4e733bfc0d3380566f)
+
+Change-Id: I9f2c1fa26e1a26b082f6f15a434dcc87193bd8b9
+---
+ .../apache/hive/spark/client/SparkClientImpl.java  |   12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java b/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java
+index 37b76f5..3ef9ba7 100644
+--- a/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java
++++ b/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java
+@@ -46,6 +46,7 @@
+ import java.net.URL;
+ import java.util.ArrayList;
+ import java.util.Collections;
++import java.util.Iterator;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Properties;
+@@ -481,7 +482,7 @@ public void run() {
+ 
+       final Process child = pb.start();
+       int childId = childIdGenerator.incrementAndGet();
+-      final List<String> childErrorLog = new ArrayList<String>();
++      final List<String> childErrorLog = Collections.synchronizedList(new ArrayList<String>());
+       redirect("stdout-redir-" + childId, new Redirector(child.getInputStream()));
+       redirect("stderr-redir-" + childId, new Redirector(child.getErrorStream(), childErrorLog));
+ 
+@@ -492,9 +493,12 @@ public void run() {
+             int exitCode = child.waitFor();
+             if (exitCode != 0) {
+               StringBuilder errStr = new StringBuilder();
+-              for (String s : childErrorLog) {
+-                errStr.append(s);
+-                errStr.append('\n');
++              synchronized(childErrorLog) {
++                Iterator iter = childErrorLog.iterator();
++                while(iter.hasNext()){
++                  errStr.append(iter.next());
++                  errStr.append('\n');
++                }
+               }
+ 
+               LOG.warn("Child process exited with code {}", exitCode);
+-- 
+1.7.9.5
+

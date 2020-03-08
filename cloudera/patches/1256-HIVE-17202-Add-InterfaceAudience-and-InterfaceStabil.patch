@@ -1,0 +1,727 @@
+From de2344222675100394844f92d013da65dec6234b Mon Sep 17 00:00:00 2001
+From: Sahil Takiar <takiar.sahil@gmail.com>
+Date: Mon, 31 Jul 2017 11:08:21 -0700
+Subject: [PATCH 1256/1363] HIVE-17202: Add InterfaceAudience and
+ InterfaceStability annotations for HMS Listener
+ APIs (Sahil Takiar, reviewed by Sergio Pena)
+
+(cherry picked from commit 681eb5b36fe3f6a9a52f904670db56cc85704274)
+
+Conflicts:
+	metastore/src/java/org/apache/hadoop/hive/metastore/events/AddPartitionEvent.java
+	metastore/src/java/org/apache/hadoop/hive/metastore/events/DropPartitionEvent.java
+	metastore/src/java/org/apache/hadoop/hive/metastore/events/InsertEvent.java
+	metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropPartitionEvent.java
+
+Change-Id: I152174dd11c5e62573da68d2d0cb0f46ecee1254
+---
+ .../hive/metastore/MetaStoreEventListener.java     |    5 ++++-
+ .../hive/metastore/MetaStorePreEventListener.java  |    5 ++++-
+ .../hive/metastore/events/AddIndexEvent.java       |    4 ++++
+ .../hive/metastore/events/AddPartitionEvent.java   |    5 +++++
+ .../hive/metastore/events/AlterIndexEvent.java     |    4 ++++
+ .../hive/metastore/events/AlterPartitionEvent.java |    4 ++++
+ .../hive/metastore/events/AlterTableEvent.java     |    4 ++++
+ .../hive/metastore/events/ConfigChangeEvent.java   |    4 ++++
+ .../hive/metastore/events/CreateDatabaseEvent.java |    4 ++++
+ .../hive/metastore/events/CreateFunctionEvent.java |    4 ++++
+ .../hive/metastore/events/CreateTableEvent.java    |    4 ++++
+ .../hive/metastore/events/DropDatabaseEvent.java   |    4 ++++
+ .../hive/metastore/events/DropFunctionEvent.java   |    4 ++++
+ .../hive/metastore/events/DropIndexEvent.java      |    4 ++++
+ .../hive/metastore/events/DropPartitionEvent.java  |    5 +++++
+ .../hive/metastore/events/DropTableEvent.java      |    4 ++++
+ .../hadoop/hive/metastore/events/InsertEvent.java  |    4 ++++
+ .../hive/metastore/events/ListenerEvent.java       |    5 ++++-
+ .../metastore/events/LoadPartitionDoneEvent.java   |    4 ++++
+ .../hive/metastore/events/PreAddIndexEvent.java    |    4 ++++
+ .../metastore/events/PreAddPartitionEvent.java     |    4 ++++
+ .../hive/metastore/events/PreAlterIndexEvent.java  |    4 ++++
+ .../metastore/events/PreAlterPartitionEvent.java   |    4 ++++
+ .../hive/metastore/events/PreAlterTableEvent.java  |    4 ++++
+ .../events/PreAuthorizationCallEvent.java          |    4 ++++
+ .../metastore/events/PreCreateDatabaseEvent.java   |    4 ++++
+ .../hive/metastore/events/PreCreateTableEvent.java |    4 ++++
+ .../metastore/events/PreDropDatabaseEvent.java     |    4 ++++
+ .../hive/metastore/events/PreDropIndexEvent.java   |    4 ++++
+ .../metastore/events/PreDropPartitionEvent.java    |    5 +++++
+ .../hive/metastore/events/PreDropTableEvent.java   |    4 ++++
+ .../hive/metastore/events/PreEventContext.java     |    5 ++++-
+ .../events/PreLoadPartitionDoneEvent.java          |    4 ++++
+ .../metastore/events/PreReadDatabaseEvent.java     |    4 ++++
+ .../hive/metastore/events/PreReadTableEvent.java   |    4 ++++
+ 35 files changed, 143 insertions(+), 4 deletions(-)
+
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreEventListener.java b/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreEventListener.java
+index b0defb5..1274370 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreEventListener.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreEventListener.java
+@@ -20,6 +20,8 @@
+ 
+ import org.apache.hadoop.conf.Configurable;
+ import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.api.MetaException;
+ import org.apache.hadoop.hive.metastore.events.AddIndexEvent;
+ import org.apache.hadoop.hive.metastore.events.AlterIndexEvent;
+@@ -44,7 +46,8 @@
+  * are called whenever an event occurs on metastore. Status of the event whether
+  * it was successful or not is contained in container event object.
+  */
+-
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class MetaStoreEventListener implements Configurable {
+ 
+   private Configuration conf;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStorePreEventListener.java b/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStorePreEventListener.java
+index b09a1da..bca6a31 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStorePreEventListener.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStorePreEventListener.java
+@@ -20,6 +20,8 @@
+ 
+ import org.apache.hadoop.conf.Configurable;
+ import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.api.InvalidOperationException;
+ import org.apache.hadoop.hive.metastore.api.MetaException;
+ import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
+@@ -30,7 +32,8 @@
+  * to be performed before a particular event occurs on a metastore. These methods
+  * are called before an event occurs on metastore.
+  */
+-
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class MetaStorePreEventListener implements Configurable {
+ 
+   private Configuration conf;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/AddIndexEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/AddIndexEvent.java
+index 43ac0aa..57fe5d1 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/AddIndexEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/AddIndexEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore;
+ import org.apache.hadoop.hive.metastore.api.Index;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class AddIndexEvent extends ListenerEvent {
+ 
+   private final Index index;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/AddPartitionEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/AddPartitionEvent.java
+index 25fa9ce..a36baab 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/AddPartitionEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/AddPartitionEvent.java
+@@ -19,6 +19,9 @@
+ package org.apache.hadoop.hive.metastore.events;
+ 
+ import com.google.common.collect.ImmutableList;
++
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Partition;
+ import org.apache.hadoop.hive.metastore.api.Table;
+@@ -28,6 +31,8 @@
+ import java.util.Iterator;
+ import java.util.List;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class AddPartitionEvent extends ListenerEvent {
+ 
+   private final Table table;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/AlterIndexEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/AlterIndexEvent.java
+index 4a49700..99e51f6 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/AlterIndexEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/AlterIndexEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore;
+ import org.apache.hadoop.hive.metastore.api.Index;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class AlterIndexEvent extends ListenerEvent {
+ 
+   private final Index newIndex;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/AlterPartitionEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/AlterPartitionEvent.java
+index 8edb50b..57a136d 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/AlterPartitionEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/AlterPartitionEvent.java
+@@ -18,10 +18,14 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Partition;
+ import org.apache.hadoop.hive.metastore.api.Table;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class AlterPartitionEvent extends ListenerEvent {
+ 
+   private final Partition oldPart;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/AlterTableEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/AlterTableEvent.java
+index 4d6dce2..52f50ad 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/AlterTableEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/AlterTableEvent.java
+@@ -19,9 +19,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Table;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class AlterTableEvent extends ListenerEvent {
+ 
+   private final Table newTable;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/ConfigChangeEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/ConfigChangeEvent.java
+index e06b960..9d23dc8 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/ConfigChangeEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/ConfigChangeEvent.java
+@@ -18,8 +18,12 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class ConfigChangeEvent extends ListenerEvent {
+ 
+   private final String key;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/CreateDatabaseEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/CreateDatabaseEvent.java
+index 588c0df..e853aec 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/CreateDatabaseEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/CreateDatabaseEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Database;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class CreateDatabaseEvent extends ListenerEvent {
+ 
+   private final Database db;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/CreateFunctionEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/CreateFunctionEvent.java
+index 717ede2..0c6ab17 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/CreateFunctionEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/CreateFunctionEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Function;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class CreateFunctionEvent extends ListenerEvent {
+ 
+   private final Function function;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/CreateTableEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/CreateTableEvent.java
+index c0ff02d..09a40bb 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/CreateTableEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/CreateTableEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Table;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class CreateTableEvent extends ListenerEvent {
+ 
+   private final Table table;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropDatabaseEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropDatabaseEvent.java
+index 4924c6e..92e95a6 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropDatabaseEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropDatabaseEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Database;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class DropDatabaseEvent extends ListenerEvent {
+ 
+   private final Database db;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropFunctionEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropFunctionEvent.java
+index 7190aae..52f04ca 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropFunctionEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropFunctionEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Function;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class DropFunctionEvent extends ListenerEvent {
+ 
+   private final Function function;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropIndexEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropIndexEvent.java
+index 06f2302..9b75055 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropIndexEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropIndexEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore;
+ import org.apache.hadoop.hive.metastore.api.Index;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class DropIndexEvent extends ListenerEvent {
+ 
+   private final Index index;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropPartitionEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropPartitionEvent.java
+index ed63bac..ae446d0 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropPartitionEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropPartitionEvent.java
+@@ -18,10 +18,15 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Partition;
+ import org.apache.hadoop.hive.metastore.api.Table;
+ 
++
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class DropPartitionEvent extends ListenerEvent {
+ 
+   private final Table table;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropTableEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropTableEvent.java
+index 560b90a..4365918 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropTableEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/DropTableEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Table;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class DropTableEvent extends ListenerEvent {
+ 
+   private final Table table;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/InsertEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/InsertEvent.java
+index 2a313b0..827fd99 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/InsertEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/InsertEvent.java
+@@ -18,6 +18,8 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.FieldSchema;
+ import org.apache.hadoop.hive.metastore.api.MetaException;
+@@ -28,6 +30,8 @@
+ import java.util.List;
+ import java.util.Map;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class InsertEvent extends ListenerEvent {
+ 
+   // Note that this event is fired from the client, so rather than having full metastore objects
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/ListenerEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/ListenerEvent.java
+index b741549..cd66f10 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/ListenerEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/ListenerEvent.java
+@@ -18,6 +18,8 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.EnvironmentContext;
+ 
+@@ -31,7 +33,8 @@
+  *
+  * This class is not thread-safe and not expected to be called in parallel.
+  */
+-
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ @NotThreadSafe
+ public abstract class ListenerEvent {
+ 
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/LoadPartitionDoneEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/LoadPartitionDoneEvent.java
+index 2070966..b56b3bb 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/LoadPartitionDoneEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/LoadPartitionDoneEvent.java
+@@ -20,9 +20,13 @@
+ 
+ import java.util.Map;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Table;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class LoadPartitionDoneEvent extends ListenerEvent {
+ 
+   private final Table table;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAddIndexEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAddIndexEvent.java
+index baa04a5..94a8836 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAddIndexEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAddIndexEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore;
+ import org.apache.hadoop.hive.metastore.api.Index;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreAddIndexEvent extends PreEventContext {
+ 
+ private final Index table;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAddPartitionEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAddPartitionEvent.java
+index 26b9380..99105f3 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAddPartitionEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAddPartitionEvent.java
+@@ -18,6 +18,8 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Partition;
+ import org.apache.hadoop.hive.metastore.api.Table;
+@@ -27,6 +29,8 @@
+ import java.util.Iterator;
+ import java.util.List;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreAddPartitionEvent extends PreEventContext {
+ 
+   private final Table table;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAlterIndexEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAlterIndexEvent.java
+index 97cf305..a2b7662 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAlterIndexEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAlterIndexEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore;
+ import org.apache.hadoop.hive.metastore.api.Index;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreAlterIndexEvent extends PreEventContext {
+ 
+   private final Index newIndex;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAlterPartitionEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAlterPartitionEvent.java
+index 4349752..5f29699 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAlterPartitionEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAlterPartitionEvent.java
+@@ -20,9 +20,13 @@
+ 
+ import java.util.List;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Partition;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreAlterPartitionEvent extends PreEventContext {
+ 
+   private final String dbName;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAlterTableEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAlterTableEvent.java
+index 8cbb9a5..4e82ad1 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAlterTableEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAlterTableEvent.java
+@@ -19,9 +19,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Table;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreAlterTableEvent extends PreEventContext {
+ 
+   private final Table newTable;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAuthorizationCallEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAuthorizationCallEvent.java
+index 446a6ee..54f6dee 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAuthorizationCallEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreAuthorizationCallEvent.java
+@@ -18,8 +18,12 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreAuthorizationCallEvent extends PreEventContext {
+ 
+   public PreAuthorizationCallEvent (HMSHandler handler) {
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreCreateDatabaseEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreCreateDatabaseEvent.java
+index c980dc4..a5f87e1 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreCreateDatabaseEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreCreateDatabaseEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Database;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreCreateDatabaseEvent extends PreEventContext {
+ 
+   private final Database db;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreCreateTableEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreCreateTableEvent.java
+index d97f33f..799ad97 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreCreateTableEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreCreateTableEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Table;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreCreateTableEvent extends PreEventContext {
+ 
+   private final Table table;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropDatabaseEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropDatabaseEvent.java
+index 375f603..adcca6f 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropDatabaseEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropDatabaseEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Database;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreDropDatabaseEvent extends PreEventContext {
+ 
+   private final Database db;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropIndexEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropIndexEvent.java
+index 437e5c1..c7fd44b 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropIndexEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropIndexEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore;
+ import org.apache.hadoop.hive.metastore.api.Index;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreDropIndexEvent extends PreEventContext {
+ 
+   private final Index index;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropPartitionEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropPartitionEvent.java
+index 658f4e2..eceb3a6 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropPartitionEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropPartitionEvent.java
+@@ -18,10 +18,15 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Partition;
+ import org.apache.hadoop.hive.metastore.api.Table;
+ 
++
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreDropPartitionEvent extends PreEventContext {
+ 
+   private final Partition partition;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropTableEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropTableEvent.java
+index e804617..110d55b 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropTableEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreDropTableEvent.java
+@@ -18,9 +18,13 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Table;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreDropTableEvent extends PreEventContext {
+ 
+   private final Table table;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreEventContext.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreEventContext.java
+index ee24a35..d61e0f4 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreEventContext.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreEventContext.java
+@@ -18,13 +18,16 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ 
+ 
+ /**
+  * Base class for all the events which are defined for metastore.
+  */
+-
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public abstract class PreEventContext {
+ 
+   public static enum PreEventType {
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreLoadPartitionDoneEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreLoadPartitionDoneEvent.java
+index 3635db0..82b72ed 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreLoadPartitionDoneEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreLoadPartitionDoneEvent.java
+@@ -20,8 +20,12 @@
+ 
+ import java.util.Map;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ 
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreLoadPartitionDoneEvent extends PreEventContext {
+ 
+   private final String dbName;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreReadDatabaseEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreReadDatabaseEvent.java
+index d415620..f223960 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreReadDatabaseEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreReadDatabaseEvent.java
+@@ -18,12 +18,16 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Database;
+ 
+ /**
+  * Database read event
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreReadDatabaseEvent extends PreEventContext {
+   private final Database db;
+ 
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreReadTableEvent.java b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreReadTableEvent.java
+index b93da67..e9d353a 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreReadTableEvent.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/events/PreReadTableEvent.java
+@@ -18,12 +18,16 @@
+ 
+ package org.apache.hadoop.hive.metastore.events;
+ 
++import org.apache.hadoop.hive.common.classification.InterfaceAudience;
++import org.apache.hadoop.hive.common.classification.InterfaceStability;
+ import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
+ import org.apache.hadoop.hive.metastore.api.Table;
+ 
+ /**
+  * Table read event
+  */
++@InterfaceAudience.Public
++@InterfaceStability.Stable
+ public class PreReadTableEvent extends PreEventContext {
+ 
+   private final Table table;
+-- 
+1.7.9.5
+

@@ -1,0 +1,28 @@
+From 2c9042a9f1cc9dbce10df92f60f6a997d6896483 Mon Sep 17 00:00:00 2001
+From: Yongzhi Chen <ychena@apache.org>
+Date: Fri, 30 Jun 2017 14:23:13 -0400
+Subject: [PATCH 1185/1363] HIVE-16914: Change HiveMetaStoreClient to
+ AutoCloseable (Xiaomeng Zhang, reviewed by Sergio
+ Pena, Yongzhi Chen)
+
+Change-Id: I11315c90d6fb05c92a2c2921faf1143f83b7f696
+---
+ .../hadoop/hive/metastore/HiveMetaStoreClient.java |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStoreClient.java b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStoreClient.java
+index 87dcea2..346c82c 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStoreClient.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStoreClient.java
+@@ -161,7 +161,7 @@
+  */
+ @Public
+ @Unstable
+-public class HiveMetaStoreClient implements IMetaStoreClient {
++public class HiveMetaStoreClient implements IMetaStoreClient, AutoCloseable {
+   ThriftHiveMetastore.Iface client = null;
+   private TTransport transport = null;
+   private boolean isConnected = false;
+-- 
+1.7.9.5
+

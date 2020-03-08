@@ -1,0 +1,47 @@
+From 324d40d0d1bdc73e67b5edf6e23f81a6464f2b27 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Mon, 16 Oct 2017 12:30:11 +0200
+Subject: [PATCH 1305/1363] CDH-60448 HIVE-17787: Apply more filters on the
+ BeeLine test output files (follow-up on
+ HIVE-17569) (Marta Kuczora, via Peter Vary)
+
+(cherry picked from commit 2da8f155db4d26c5a0bdd6b0c89065dedee3b27e)
+
+Change-Id: I91bb410f7a256033978cea0b9c1469fe114e4189
+---
+ .../main/java/org/apache/hive/beeline/QFile.java   |   12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/itests/util/src/main/java/org/apache/hive/beeline/QFile.java b/itests/util/src/main/java/org/apache/hive/beeline/QFile.java
+index 613fd98..02d3e4e 100644
+--- a/itests/util/src/main/java/org/apache/hive/beeline/QFile.java
++++ b/itests/util/src/main/java/org/apache/hive/beeline/QFile.java
+@@ -68,7 +68,14 @@
+ 
+   private static final String MASK_PATTERN = "#### A masked pattern was here ####\n";
+ 
+-  private static final String[] COMMANDS_TO_REMOVE = {"EXPLAIN", "DESCRIBE[\\s\\n]+EXTENDED", "DESCRIBE[\\s\\n]+FORMATTED"};
++  private static final String[] COMMANDS_TO_REMOVE = {
++      "EXPLAIN",
++      "DESC(RIBE)?[\\s\\n]+EXTENDED",
++      "DESC(RIBE)?[\\s\\n]+FORMATTED",
++      "DESC(RIBE)?",
++      "SHOW[\\s\\n]+TABLES",
++      "SHOW[\\s\\n]+FORMATTED[\\s\\n]+INDEXES",
++      "SHOW[\\s\\n]+DATABASES"};
+ 
+   private String name;
+   private String databaseName;
+@@ -361,6 +368,9 @@ private static RegexFilterSet getPortableFilterSet() {
+       filterSet.addFilter(String.format(regex, command),
+           Pattern.DOTALL | Pattern.CASE_INSENSITIVE, "");
+     }
++    filterSet.addFilter("(Warning: )(.* Join .*JOIN\\[\\d+\\].*)( is a cross product)", "$1MASKED$3");
++    filterSet.addFilter("mapreduce.jobtracker.address=.*\n",
++        "mapreduce.jobtracker.address=MASKED\n");
+     return filterSet;
+   }
+ 
+-- 
+1.7.9.5
+

@@ -1,0 +1,94 @@
+From 93b88bc07a716e15a0269e593dcf5175f66dfdba Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Fri, 28 Jul 2017 11:03:11 +0200
+Subject: [PATCH 1216/1363] CDH-56890 HIVE-17050: Multiline queries that have
+ comment in middle fail when executed via "beeline
+ -e" (Yibing Shi reviewed by Yongzhi Chen and
+ Peter Vary)
+
+(cherry picked from commit 705979e687bda7c21ae80e8c169acaf48a7239d5)
+
+Change-Id: I5da7c24dd433ffad07a33b4ad5c8ab31c743de5a
+---
+ .../apache/hive/common/util/HiveStringUtils.java   |   10 +++++++---
+ .../test/queries/clientpositive/cmdwithcomments.q  |    2 ++
+ .../results/clientpositive/cmdwithcomments.q.out   |   17 ++++++++++++++---
+ 3 files changed, 23 insertions(+), 6 deletions(-)
+
+diff --git a/common/src/java/org/apache/hive/common/util/HiveStringUtils.java b/common/src/java/org/apache/hive/common/util/HiveStringUtils.java
+index 7f27cf6..8595813 100644
+--- a/common/src/java/org/apache/hive/common/util/HiveStringUtils.java
++++ b/common/src/java/org/apache/hive/common/util/HiveStringUtils.java
+@@ -1092,10 +1092,13 @@ public static String removeComments(String line, int[] startQuote) {
+       return "";  //assume # can only be used at the beginning of line.
+     }
+     StringBuilder builder = new StringBuilder();
+-    for (int index = 0; index < line.length(); index++) {
++    for (int index = 0; index < line.length();) {
+       if (startQuote[0] == -1 && index < line.length() - 1 && line.charAt(index) == '-'
+           && line.charAt(index + 1) == '-') {
+-        return builder.toString().trim();
++        // Jump to the end of current line. When a multiple line query is executed with -e parameter,
++        // it is passed in as one line string separated with '\n'
++        for (; index < line.length() && line.charAt(index) != '\n'; ++index);
++        continue;
+       }
+ 
+       char letter = line.charAt(index);
+@@ -1107,9 +1110,10 @@ public static String removeComments(String line, int[] startQuote) {
+       }
+ 
+       builder.append(letter);
++      index++;
+     }
+ 
+-    return builder.toString();
++    return builder.toString().trim();
+   }
+ 
+   /**
+diff --git a/ql/src/test/queries/clientpositive/cmdwithcomments.q b/ql/src/test/queries/clientpositive/cmdwithcomments.q
+index e9c0d43..4c2963e 100644
+--- a/ql/src/test/queries/clientpositive/cmdwithcomments.q
++++ b/ql/src/test/queries/clientpositive/cmdwithcomments.q
+@@ -10,4 +10,6 @@ limit 1;
+ --comment7
+ select "this is
+ another --string value" from numt where idx =2; --comment8
++select 1, --comment
++2;
+ drop table numt;
+diff --git a/ql/src/test/results/clientpositive/cmdwithcomments.q.out b/ql/src/test/results/clientpositive/cmdwithcomments.q.out
+index 93c9431..151a82c 100644
+--- a/ql/src/test/results/clientpositive/cmdwithcomments.q.out
++++ b/ql/src/test/results/clientpositive/cmdwithcomments.q.out
+@@ -63,12 +63,23 @@ POSTHOOK: Input: default@numt
+ this is
+ another --string value
+ PREHOOK: query: --comment8
+-drop table numt
++select 1, --comment
++2
++PREHOOK: type: QUERY
++PREHOOK: Input: _dummy_database@_dummy_table
++#### A masked pattern was here ####
++POSTHOOK: query: --comment8
++select 1, --comment
++2
++POSTHOOK: type: QUERY
++POSTHOOK: Input: _dummy_database@_dummy_table
++#### A masked pattern was here ####
++1	2
++PREHOOK: query: drop table numt
+ PREHOOK: type: DROPTABLE
+ PREHOOK: Input: default@numt
+ PREHOOK: Output: default@numt
+-POSTHOOK: query: --comment8
+-drop table numt
++POSTHOOK: query: drop table numt
+ POSTHOOK: type: DROPTABLE
+ POSTHOOK: Input: default@numt
+ POSTHOOK: Output: default@numt
+-- 
+1.7.9.5
+

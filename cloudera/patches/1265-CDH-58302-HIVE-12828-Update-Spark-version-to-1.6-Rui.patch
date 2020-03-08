@@ -1,0 +1,52 @@
+From d31a3fac71172602f368f7b370f1fdbd2370bb42 Mon Sep 17 00:00:00 2001
+From: Rui Li <rui.li@intel.com>
+Date: Fri, 15 Jan 2016 21:24:39 +0800
+Subject: [PATCH 1265/1363] CDH-58302: HIVE-12828: Update Spark version to 1.6
+ (Rui reviewed by Xuefu)
+
+(cherry picked from commit 34b41e389ab331f1d61b077fbea8cb855775698f)
+
+Change-Id: I2ff3efe8a94e57aaa5ec7d96aa026d60a0b182ef
+---
+ data/conf/spark/yarn-client/hive-site.xml          |    4 ++--
+ .../apache/hadoop/hive/shims/Hadoop23Shims.java    |    2 ++
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/data/conf/spark/yarn-client/hive-site.xml b/data/conf/spark/yarn-client/hive-site.xml
+index 223782b..ba05b6f 100644
+--- a/data/conf/spark/yarn-client/hive-site.xml
++++ b/data/conf/spark/yarn-client/hive-site.xml
+@@ -237,7 +237,7 @@
+ 
+ <property>
+   <name>spark.yarn.executor.memoryOverhead</name>
+-  <value>256</value>
++  <value>0</value>
+ </property>
+ 
+ <property>
+@@ -247,7 +247,7 @@
+ 
+ <property>
+   <name>spark.yarn.driver.memoryOverhead</name>
+-  <value>256</value>
++  <value>0</value>
+ </property>
+ 
+ <property>
+diff --git a/shims/0.23/src/main/java/org/apache/hadoop/hive/shims/Hadoop23Shims.java b/shims/0.23/src/main/java/org/apache/hadoop/hive/shims/Hadoop23Shims.java
+index 52c187c..ba889ac 100644
+--- a/shims/0.23/src/main/java/org/apache/hadoop/hive/shims/Hadoop23Shims.java
++++ b/shims/0.23/src/main/java/org/apache/hadoop/hive/shims/Hadoop23Shims.java
+@@ -523,6 +523,8 @@ public MiniSparkShim(Configuration conf, int numberOfTaskTrackers,
+       mr = new MiniSparkOnYARNCluster("sparkOnYarn");
+       conf.set("fs.defaultFS", nameNode);
+       conf.set("yarn.resourcemanager.scheduler.class", "org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.FairScheduler");
++      // disable resource monitoring, although it should be off by default
++      conf.setBoolean(YarnConfiguration.YARN_MINICLUSTER_CONTROL_RESOURCE_MONITORING, false);
+       configureImpersonation(conf);
+       mr.init(conf);
+       mr.start();
+-- 
+1.7.9.5
+

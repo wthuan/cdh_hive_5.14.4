@@ -1,0 +1,51 @@
+From 20ea0f5aa8db5b3e4033c4cdde0c7ea2397a0e5b Mon Sep 17 00:00:00 2001
+From: Chao Sun <sunchao@apache.org>
+Date: Wed, 28 Jun 2017 09:59:30 -0700
+Subject: [PATCH 1241/1363] CDH-57812 HIVE-16978: HoS: add current thread ID
+ to the log redirector for the RemoteDriver (Chao
+ Sun, reviewed by Xuefu Zhang)
+
+(cherry picked from commit a3291c3e203e047437bb9b4dbaca0fde1490b13f)
+
+Change-Id: Id7d525917d8bac522d23916515c0b40a86e72318
+---
+ .../apache/hive/spark/client/SparkClientImpl.java  |    8 +++-----
+ 1 file changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java b/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java
+index 3ef9ba7..f002bfe 100644
+--- a/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java
++++ b/spark-client/src/main/java/org/apache/hive/spark/client/SparkClientImpl.java
+@@ -87,7 +87,6 @@
+ 
+   private final Map<String, String> conf;
+   private final HiveConf hiveConf;
+-  private final AtomicInteger childIdGenerator;
+   private final Thread driverThread;
+   private final Map<String, JobHandleImpl<?>> jobs;
+   private final Rpc driverRpc;
+@@ -97,7 +96,6 @@
+   SparkClientImpl(RpcServer rpcServer, Map<String, String> conf, HiveConf hiveConf) throws IOException, SparkException {
+     this.conf = conf;
+     this.hiveConf = hiveConf;
+-    this.childIdGenerator = new AtomicInteger();
+     this.jobs = Maps.newConcurrentMap();
+ 
+     String clientId = UUID.randomUUID().toString();
+@@ -481,10 +479,10 @@ public void run() {
+       }
+ 
+       final Process child = pb.start();
+-      int childId = childIdGenerator.incrementAndGet();
++      String threadName = Thread.currentThread().getName();
+       final List<String> childErrorLog = Collections.synchronizedList(new ArrayList<String>());
+-      redirect("stdout-redir-" + childId, new Redirector(child.getInputStream()));
+-      redirect("stderr-redir-" + childId, new Redirector(child.getErrorStream(), childErrorLog));
++      redirect("RemoteDriver-stdout-redir-" + threadName, new Redirector(child.getInputStream()));
++      redirect("RemoteDriver-stderr-redir-" + threadName, new Redirector(child.getErrorStream(), childErrorLog));
+ 
+       runnable = new Runnable() {
+         @Override
+-- 
+1.7.9.5
+

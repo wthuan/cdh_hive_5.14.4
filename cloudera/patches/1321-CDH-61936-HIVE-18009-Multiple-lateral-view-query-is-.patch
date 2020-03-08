@@ -1,0 +1,247 @@
+From bddb7a265e06b0291dc02419a6dce2d4f604f3fd Mon Sep 17 00:00:00 2001
+From: Aihua Xu <aihuaxu@apache.org>
+Date: Tue, 7 Nov 2017 16:30:36 -0800
+Subject: [PATCH 1321/1363] CDH-61936: HIVE-18009: Multiple lateral view query
+ is slow on hive on spark (Aihua Xu, reviewed by
+ Yongzhi Chen & Xuefu Zhang)
+
+Change-Id: I2081b734c9daa75b7babbe8dbea7d60e08320790
+---
+ .../test/resources/testconfiguration.properties    |    1 +
+ .../hadoop/hive/ql/parse/spark/GenSparkUtils.java  |   30 +++++++---
+ .../lateral_view_multi_lateralviews.q              |   21 +++++++
+ .../lateral_view_multi_lateralviews.q.out          |   62 ++++++++++++++++++++
+ .../spark/lateral_view_multi_lateralviews.q.out    |   62 ++++++++++++++++++++
+ 5 files changed, 167 insertions(+), 9 deletions(-)
+ create mode 100644 ql/src/test/queries/clientpositive/lateral_view_multi_lateralviews.q
+ create mode 100644 ql/src/test/results/clientpositive/lateral_view_multi_lateralviews.q.out
+ create mode 100644 ql/src/test/results/clientpositive/spark/lateral_view_multi_lateralviews.q.out
+
+diff --git a/itests/src/test/resources/testconfiguration.properties b/itests/src/test/resources/testconfiguration.properties
+index 801da6d..a30703a 100644
+--- a/itests/src/test/resources/testconfiguration.properties
++++ b/itests/src/test/resources/testconfiguration.properties
+@@ -628,6 +628,7 @@ spark.query.files=add_part_multiple.q, \
+   join_vc.q, \
+   join_view.q, \
+   lateral_view_explode2.q, \
++  lateral_view_multi_lateralviews.q, \
+   leftsemijoin.q, \
+   leftsemijoin_mr.q, \
+   limit_partition_metadataonly.q, \
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/GenSparkUtils.java b/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/GenSparkUtils.java
+index 0f97c76..335daf0 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/GenSparkUtils.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/parse/spark/GenSparkUtils.java
+@@ -27,6 +27,7 @@
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.Stack;
+ 
+ import org.apache.commons.logging.Log;
+ import org.apache.commons.logging.LogFactory;
+@@ -533,17 +534,28 @@ private static boolean isSame(List<ExprNodeDesc> list1, List<ExprNodeDesc> list2
+   }
+ 
+   @SuppressWarnings("unchecked")
+-  public static <T> T getChildOperator(Operator<?> op, Class<T> klazz) throws SemanticException {
+-    if (klazz.isInstance(op)) {
+-      return (T) op;
+-    }
+-    List<Operator<?>> childOperators = op.getChildOperators();
+-    for (Operator<?> childOp : childOperators) {
+-      T result = getChildOperator(childOp, klazz);
+-      if (result != null) {
+-        return result;
++  public static <T> T getChildOperator(Operator<?> root, Class<T> klazz) throws SemanticException {
++    if (root == null) return null;
++
++    HashSet<Operator<?>> visited = new HashSet<Operator<?>>();
++    Stack<Operator<?>> stack = new Stack<Operator<?>>();
++    stack.push(root);
++    visited.add(root);
++
++    while (!stack.isEmpty()) {
++      Operator<?> op = stack.pop();
++      if (klazz.isInstance(op)) {
++        return (T) op;
++      }
++      List<Operator<?>> childOperators = op.getChildOperators();
++      for (Operator<?> childOp : childOperators) {
++        if (!visited.contains(childOp)) {
++          stack.push(childOp);
++          visited.add(childOp);
++        }
+       }
+     }
++
+     return null;
+   }
+ 
+diff --git a/ql/src/test/queries/clientpositive/lateral_view_multi_lateralviews.q b/ql/src/test/queries/clientpositive/lateral_view_multi_lateralviews.q
+new file mode 100644
+index 0000000..29e026a
+--- /dev/null
++++ b/ql/src/test/queries/clientpositive/lateral_view_multi_lateralviews.q
+@@ -0,0 +1,21 @@
++CREATE TABLE t1(x5 STRUCT<x4: STRUCT<x3: ARRAY<STRUCT<x1: STRING, x2: ARRAY<STRING>>>> >);
++INSERT INTO t1 SELECT NAMED_STRUCT('x4', NAMED_STRUCT('x3', ARRAY(NAMED_STRUCT('x1', 'x1_1', 'x2', ARRAY('x2_1', 'x2_2')))));
++SELECT c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16
++FROM t1
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c1
++LATERAL VIEW EXPLODE(c1.x2) lv as c2
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c3
++LATERAL VIEW EXPLODE(c1.x2) lv as c4
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c5
++LATERAL VIEW EXPLODE(c1.x2) lv as c6
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c7
++LATERAL VIEW EXPLODE(c1.x2) lv as c8
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c9
++LATERAL VIEW EXPLODE(c1.x2) lv as c10
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c11
++LATERAL VIEW EXPLODE(c1.x2) lv as c12
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c13
++LATERAL VIEW EXPLODE(c1.x2) lv as c14
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c15
++LATERAL VIEW EXPLODE(c1.x2) lv as c16
++LIMIT 1;
+diff --git a/ql/src/test/results/clientpositive/lateral_view_multi_lateralviews.q.out b/ql/src/test/results/clientpositive/lateral_view_multi_lateralviews.q.out
+new file mode 100644
+index 0000000..b9c827f
+--- /dev/null
++++ b/ql/src/test/results/clientpositive/lateral_view_multi_lateralviews.q.out
+@@ -0,0 +1,62 @@
++PREHOOK: query: CREATE TABLE t1(x5 STRUCT<x4: STRUCT<x3: ARRAY<STRUCT<x1: STRING, x2: ARRAY<STRING>>>> >)
++PREHOOK: type: CREATETABLE
++PREHOOK: Output: database:default
++PREHOOK: Output: default@t1
++POSTHOOK: query: CREATE TABLE t1(x5 STRUCT<x4: STRUCT<x3: ARRAY<STRUCT<x1: STRING, x2: ARRAY<STRING>>>> >)
++POSTHOOK: type: CREATETABLE
++POSTHOOK: Output: database:default
++POSTHOOK: Output: default@t1
++PREHOOK: query: INSERT INTO t1 SELECT NAMED_STRUCT('x4', NAMED_STRUCT('x3', ARRAY(NAMED_STRUCT('x1', 'x1_1', 'x2', ARRAY('x2_1', 'x2_2')))))
++PREHOOK: type: QUERY
++PREHOOK: Input: _dummy_database@_dummy_table
++PREHOOK: Output: default@t1
++POSTHOOK: query: INSERT INTO t1 SELECT NAMED_STRUCT('x4', NAMED_STRUCT('x3', ARRAY(NAMED_STRUCT('x1', 'x1_1', 'x2', ARRAY('x2_1', 'x2_2')))))
++POSTHOOK: type: QUERY
++POSTHOOK: Input: _dummy_database@_dummy_table
++POSTHOOK: Output: default@t1
++POSTHOOK: Lineage: t1.x5 EXPRESSION []
++PREHOOK: query: SELECT c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16
++FROM t1
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c1
++LATERAL VIEW EXPLODE(c1.x2) lv as c2
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c3
++LATERAL VIEW EXPLODE(c1.x2) lv as c4
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c5
++LATERAL VIEW EXPLODE(c1.x2) lv as c6
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c7
++LATERAL VIEW EXPLODE(c1.x2) lv as c8
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c9
++LATERAL VIEW EXPLODE(c1.x2) lv as c10
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c11
++LATERAL VIEW EXPLODE(c1.x2) lv as c12
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c13
++LATERAL VIEW EXPLODE(c1.x2) lv as c14
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c15
++LATERAL VIEW EXPLODE(c1.x2) lv as c16
++LIMIT 1
++PREHOOK: type: QUERY
++PREHOOK: Input: default@t1
++#### A masked pattern was here ####
++POSTHOOK: query: SELECT c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16
++FROM t1
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c1
++LATERAL VIEW EXPLODE(c1.x2) lv as c2
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c3
++LATERAL VIEW EXPLODE(c1.x2) lv as c4
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c5
++LATERAL VIEW EXPLODE(c1.x2) lv as c6
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c7
++LATERAL VIEW EXPLODE(c1.x2) lv as c8
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c9
++LATERAL VIEW EXPLODE(c1.x2) lv as c10
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c11
++LATERAL VIEW EXPLODE(c1.x2) lv as c12
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c13
++LATERAL VIEW EXPLODE(c1.x2) lv as c14
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c15
++LATERAL VIEW EXPLODE(c1.x2) lv as c16
++LIMIT 1
++POSTHOOK: type: QUERY
++POSTHOOK: Input: default@t1
++#### A masked pattern was here ####
++{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1
+diff --git a/ql/src/test/results/clientpositive/spark/lateral_view_multi_lateralviews.q.out b/ql/src/test/results/clientpositive/spark/lateral_view_multi_lateralviews.q.out
+new file mode 100644
+index 0000000..b9c827f
+--- /dev/null
++++ b/ql/src/test/results/clientpositive/spark/lateral_view_multi_lateralviews.q.out
+@@ -0,0 +1,62 @@
++PREHOOK: query: CREATE TABLE t1(x5 STRUCT<x4: STRUCT<x3: ARRAY<STRUCT<x1: STRING, x2: ARRAY<STRING>>>> >)
++PREHOOK: type: CREATETABLE
++PREHOOK: Output: database:default
++PREHOOK: Output: default@t1
++POSTHOOK: query: CREATE TABLE t1(x5 STRUCT<x4: STRUCT<x3: ARRAY<STRUCT<x1: STRING, x2: ARRAY<STRING>>>> >)
++POSTHOOK: type: CREATETABLE
++POSTHOOK: Output: database:default
++POSTHOOK: Output: default@t1
++PREHOOK: query: INSERT INTO t1 SELECT NAMED_STRUCT('x4', NAMED_STRUCT('x3', ARRAY(NAMED_STRUCT('x1', 'x1_1', 'x2', ARRAY('x2_1', 'x2_2')))))
++PREHOOK: type: QUERY
++PREHOOK: Input: _dummy_database@_dummy_table
++PREHOOK: Output: default@t1
++POSTHOOK: query: INSERT INTO t1 SELECT NAMED_STRUCT('x4', NAMED_STRUCT('x3', ARRAY(NAMED_STRUCT('x1', 'x1_1', 'x2', ARRAY('x2_1', 'x2_2')))))
++POSTHOOK: type: QUERY
++POSTHOOK: Input: _dummy_database@_dummy_table
++POSTHOOK: Output: default@t1
++POSTHOOK: Lineage: t1.x5 EXPRESSION []
++PREHOOK: query: SELECT c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16
++FROM t1
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c1
++LATERAL VIEW EXPLODE(c1.x2) lv as c2
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c3
++LATERAL VIEW EXPLODE(c1.x2) lv as c4
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c5
++LATERAL VIEW EXPLODE(c1.x2) lv as c6
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c7
++LATERAL VIEW EXPLODE(c1.x2) lv as c8
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c9
++LATERAL VIEW EXPLODE(c1.x2) lv as c10
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c11
++LATERAL VIEW EXPLODE(c1.x2) lv as c12
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c13
++LATERAL VIEW EXPLODE(c1.x2) lv as c14
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c15
++LATERAL VIEW EXPLODE(c1.x2) lv as c16
++LIMIT 1
++PREHOOK: type: QUERY
++PREHOOK: Input: default@t1
++#### A masked pattern was here ####
++POSTHOOK: query: SELECT c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16
++FROM t1
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c1
++LATERAL VIEW EXPLODE(c1.x2) lv as c2
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c3
++LATERAL VIEW EXPLODE(c1.x2) lv as c4
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c5
++LATERAL VIEW EXPLODE(c1.x2) lv as c6
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c7
++LATERAL VIEW EXPLODE(c1.x2) lv as c8
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c9
++LATERAL VIEW EXPLODE(c1.x2) lv as c10
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c11
++LATERAL VIEW EXPLODE(c1.x2) lv as c12
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c13
++LATERAL VIEW EXPLODE(c1.x2) lv as c14
++LATERAL VIEW EXPLODE(x5.x4.x3) lv as c15
++LATERAL VIEW EXPLODE(c1.x2) lv as c16
++LIMIT 1
++POSTHOOK: type: QUERY
++POSTHOOK: Input: default@t1
++#### A masked pattern was here ####
++{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1	{"x1":"x1_1","x2":["x2_1","x2_2"]}	x2_1
+-- 
+1.7.9.5
+

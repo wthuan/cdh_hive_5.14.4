@@ -1,0 +1,48 @@
+From ec96a4f0e63f90ca07a9db287c16b89b85dbf279 Mon Sep 17 00:00:00 2001
+From: Vihang Karajgaonkar <vihang@cloudera.com>
+Date: Thu, 7 Sep 2017 13:14:25 -0700
+Subject: [PATCH 1278/1363] CLOUDERA-BUILD : CDH-58912 : Fix for unit-tests
+ using miniKdc and secure HMS
+
+Change-Id: I982901f99f9b960f34ef4830f1318a3a481e69b7
+---
+ .../hive-minikdc/src/test/resources/core-site.xml  |   19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/itests/hive-minikdc/src/test/resources/core-site.xml b/itests/hive-minikdc/src/test/resources/core-site.xml
+index cf2eee4..3562411 100644
+--- a/itests/hive-minikdc/src/test/resources/core-site.xml
++++ b/itests/hive-minikdc/src/test/resources/core-site.xml
+@@ -53,10 +53,29 @@
+     <name>hadoop.proxyuser.superuser.hosts</name>
+     <value>*</value>
+   </property>
++  <!-- following proxy user settings are only part of CDH -->
++  <!-- check CDH-58912 for details -->
+   <property>
+     <name>hadoop.proxyuser.superuser.groups</name>
++    <value>superuser,user1</value>
++  </property>
++  <property>
++    <name>hadoop.proxyuser.user1.hosts</name>
++    <value>*</value>
++  </property>
++  <property>
++    <name>hadoop.proxyuser.user2.hosts</name>
++    <value>*</value>
++  </property>
++  <property>
++    <name>hadoop.proxyuser.user1.groups</name>
+     <value>user1</value>
+   </property>
++  <property>
++    <name>hadoop.proxyuser.user2.groups</name>
++    <value>user2</value>
++  </property>
++  <!-- CDH specific settings end -->
+ 
+   <property>
+     <name>hadoop.security.authentication</name>
+-- 
+1.7.9.5
+

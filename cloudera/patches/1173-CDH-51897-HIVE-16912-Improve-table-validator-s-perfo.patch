@@ -1,0 +1,28 @@
+From fc7c4f239c394f9317bca37e570b935ae2497c08 Mon Sep 17 00:00:00 2001
+From: Naveen Gangam <ngangam@apache.org>
+Date: Mon, 19 Jun 2017 08:51:14 -0400
+Subject: [PATCH 1173/1363] CDH-51897 HIVE-16912: Improve table validator's
+ performance against Oracle (Naveen Gangam,
+ reviewed by Aihua Xu)
+
+Change-Id: I5f9a4dd897f7ca5d727b657fe9989774dc5891c2
+---
+ .../org/apache/hive/beeline/HiveSchemaTool.java    |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/beeline/src/java/org/apache/hive/beeline/HiveSchemaTool.java b/beeline/src/java/org/apache/hive/beeline/HiveSchemaTool.java
+index 359e75a..313d989 100644
+--- a/beeline/src/java/org/apache/hive/beeline/HiveSchemaTool.java
++++ b/beeline/src/java/org/apache/hive/beeline/HiveSchemaTool.java
+@@ -730,7 +730,7 @@ boolean validateSchemaTables(Connection conn) throws HiveMetaException {
+     try {
+       metadata       = conn.getMetaData();
+       String[] types = {"TABLE"};
+-      rs             = metadata.getTables(null, null, "%", types);
++      rs             = metadata.getTables(null, hmsConn.getSchema(), "%", types);
+       String table   = null;
+ 
+       while (rs.next()) {
+-- 
+1.7.9.5
+

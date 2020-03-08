@@ -1,0 +1,134 @@
+From 86efec2d4fc24615a6fe7da4c0d5b853225ac5d2 Mon Sep 17 00:00:00 2001
+From: Vihang Karajgaonkar <vihang@cloudera.com>
+Date: Wed, 31 May 2017 11:14:46 -0700
+Subject: [PATCH 1158/1363] Revert "CLOUDERA-BUILD : CDH-54539 : Hive first
+ run failing due to HiveCreateMetastoreTables task
+ failure"
+
+This reverts commit 050cb5a1ee5d061ed7f8bd28c06bf7728992418c.
+
+Change-Id: I130ba092afbbda6272f96e114246a3a6a6abafdb
+---
+ .../upgrade/derby/hive-schema-1.1.0.derby.sql      |    4 ++--
+ .../upgrade/derby/update-cdh-version.derby.sql     |    1 -
+ .../upgrade/mssql/hive-schema-1.1.0.mssql.sql      |    4 ++--
+ .../upgrade/mssql/update-cdh-version.mssql.sql     |    1 -
+ .../upgrade/mysql/hive-schema-1.1.0.mysql.sql      |    2 +-
+ .../upgrade/mysql/update-cdh-version.mysql.sql     |    1 -
+ .../upgrade/oracle/hive-schema-1.1.0.oracle.sql    |    2 +-
+ .../upgrade/oracle/update-cdh-version.oracle.sql   |    1 -
+ .../postgres/hive-schema-1.1.0.postgres.sql        |    2 +-
+ .../postgres/update-cdh-version.postgres.sql       |    1 -
+ 10 files changed, 7 insertions(+), 12 deletions(-)
+ delete mode 100644 metastore/scripts/upgrade/derby/update-cdh-version.derby.sql
+ delete mode 100644 metastore/scripts/upgrade/mssql/update-cdh-version.mssql.sql
+ delete mode 100644 metastore/scripts/upgrade/mysql/update-cdh-version.mysql.sql
+ delete mode 100644 metastore/scripts/upgrade/oracle/update-cdh-version.oracle.sql
+ delete mode 100644 metastore/scripts/upgrade/postgres/update-cdh-version.postgres.sql
+
+diff --git a/metastore/scripts/upgrade/derby/hive-schema-1.1.0.derby.sql b/metastore/scripts/upgrade/derby/hive-schema-1.1.0.derby.sql
+index 3dc8814..749ce3c 100644
+--- a/metastore/scripts/upgrade/derby/hive-schema-1.1.0.derby.sql
++++ b/metastore/scripts/upgrade/derby/hive-schema-1.1.0.derby.sql
+@@ -335,7 +335,7 @@ RUN 'hive-txn-schema-0.13.0.derby.sql';
+ RUN '041-HIVE-16556.derby.sql';
+ 
+ -- -------------------------------------------------------------------------------------------------------------------------------------------------
+--- Record schema version. Should be the last step in the init script. Starting CDH-5.13.0 CDH version also needs to be recorded in the version table
++-- Record schema version. Should be the last step in the init script. Starting CDH-5.12.0 CDH version also needs to be recorded in the version table
+ -- -------------------------------------------------------------------------------------------------------------------------------------------------
+-RUN 'update-cdh-version.derby.sql';
++INSERT INTO "APP"."VERSION" (VER_ID, SCHEMA_VERSION, VERSION_COMMENT) VALUES (1, '1.1.0-cdh5.12.0', 'Hive release version 1.1.0-cdh5.12.0');
+ 
+diff --git a/metastore/scripts/upgrade/derby/update-cdh-version.derby.sql b/metastore/scripts/upgrade/derby/update-cdh-version.derby.sql
+deleted file mode 100644
+index 72877ae..0000000
+--- a/metastore/scripts/upgrade/derby/update-cdh-version.derby.sql
++++ /dev/null
+@@ -1 +0,0 @@
+-INSERT INTO "APP"."VERSION" (VER_ID, SCHEMA_VERSION, VERSION_COMMENT) VALUES (1, '1.1.0-cdh5.13.0', 'Hive release version 1.1.0-cdh5.13.0');
+\ No newline at end of file
+diff --git a/metastore/scripts/upgrade/mssql/hive-schema-1.1.0.mssql.sql b/metastore/scripts/upgrade/mssql/hive-schema-1.1.0.mssql.sql
+index a327194..da019b2 100644
+--- a/metastore/scripts/upgrade/mssql/hive-schema-1.1.0.mssql.sql
++++ b/metastore/scripts/upgrade/mssql/hive-schema-1.1.0.mssql.sql
+@@ -942,9 +942,9 @@ ALTER TABLE TXN_COMPONENTS  WITH CHECK ADD FOREIGN KEY(TC_TXNID) REFERENCES TXNS
+ -- ------------------------------------------
+ -- Cloudera specific metastore schema patches
+ -- ------------------------------------------
+-:r 026-HIVE-16556.mssql.sql
++:r 026-HIVE-16556.mssql.sql;
+ 
+ -- -----------------------------------------------------------------------------------------------------------------------------------------
+ -- Record schema version. Should be the last step in the init script. Starting CDH-5.12.0 CDH version must be included in the schema version
+ -- -----------------------------------------------------------------------------------------------------------------------------------------
+-:r update-cdh-version.mssql.sql
++INSERT INTO VERSION (VER_ID, SCHEMA_VERSION, VERSION_COMMENT) VALUES (1, '1.1.0-cdh5.12.0', 'Hive release version 1.1.0-cdh5.12.0');
+diff --git a/metastore/scripts/upgrade/mssql/update-cdh-version.mssql.sql b/metastore/scripts/upgrade/mssql/update-cdh-version.mssql.sql
+deleted file mode 100644
+index dafa976..0000000
+--- a/metastore/scripts/upgrade/mssql/update-cdh-version.mssql.sql
++++ /dev/null
+@@ -1 +0,0 @@
+-INSERT INTO VERSION (VER_ID, SCHEMA_VERSION, VERSION_COMMENT) VALUES (1, '1.1.0-cdh5.13.0', 'Hive release version 1.1.0-cdh5.13.0');
+\ No newline at end of file
+diff --git a/metastore/scripts/upgrade/mysql/hive-schema-1.1.0.mysql.sql b/metastore/scripts/upgrade/mysql/hive-schema-1.1.0.mysql.sql
+index 475c5ba..7c98df9 100644
+--- a/metastore/scripts/upgrade/mysql/hive-schema-1.1.0.mysql.sql
++++ b/metastore/scripts/upgrade/mysql/hive-schema-1.1.0.mysql.sql
+@@ -829,7 +829,7 @@ SOURCE 041-HIVE-16556.mysql.sql;
+ -- ----------------------------------------------------------------------------------------------------------------------------------------
+ -- Record schema version. Should be the last step in the init script. Starting CDH-5.12.0 the schema version should also include CDH version
+ -- -----------------------------------------------------------------------------------------------------------------------------------------
+-SOURCE update-cdh-version.mysql.sql;
++INSERT INTO VERSION (VER_ID, SCHEMA_VERSION, VERSION_COMMENT) VALUES (1, '1.1.0-cdh5.12.0', 'Hive release version 1.1.0-cdh5.12.0');
+ 
+ /*!40101 SET character_set_client = @saved_cs_client */;
+ /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+diff --git a/metastore/scripts/upgrade/mysql/update-cdh-version.mysql.sql b/metastore/scripts/upgrade/mysql/update-cdh-version.mysql.sql
+deleted file mode 100644
+index dafa976..0000000
+--- a/metastore/scripts/upgrade/mysql/update-cdh-version.mysql.sql
++++ /dev/null
+@@ -1 +0,0 @@
+-INSERT INTO VERSION (VER_ID, SCHEMA_VERSION, VERSION_COMMENT) VALUES (1, '1.1.0-cdh5.13.0', 'Hive release version 1.1.0-cdh5.13.0');
+\ No newline at end of file
+diff --git a/metastore/scripts/upgrade/oracle/hive-schema-1.1.0.oracle.sql b/metastore/scripts/upgrade/oracle/hive-schema-1.1.0.oracle.sql
+index 3d21038..cc3a2ab 100644
+--- a/metastore/scripts/upgrade/oracle/hive-schema-1.1.0.oracle.sql
++++ b/metastore/scripts/upgrade/oracle/hive-schema-1.1.0.oracle.sql
+@@ -790,4 +790,4 @@ CREATE INDEX FUNC_RU_N49 ON FUNC_RU (FUNC_ID);
+ -- -----------------------------------------------------------------
+ -- Record schema version. Should be the last step in the init script. Starting CDH5.12.0 schema version must include the CDH version as well
+ -- -----------------------------------------------------------------
+-@update-cdh-version.oracle.sql;
++INSERT INTO VERSION (VER_ID, SCHEMA_VERSION, VERSION_COMMENT) VALUES (1, '1.1.0-cdh5.12.0', 'Hive release version 1.1.0-cdh5.12.0');
+diff --git a/metastore/scripts/upgrade/oracle/update-cdh-version.oracle.sql b/metastore/scripts/upgrade/oracle/update-cdh-version.oracle.sql
+deleted file mode 100644
+index dafa976..0000000
+--- a/metastore/scripts/upgrade/oracle/update-cdh-version.oracle.sql
++++ /dev/null
+@@ -1 +0,0 @@
+-INSERT INTO VERSION (VER_ID, SCHEMA_VERSION, VERSION_COMMENT) VALUES (1, '1.1.0-cdh5.13.0', 'Hive release version 1.1.0-cdh5.13.0');
+\ No newline at end of file
+diff --git a/metastore/scripts/upgrade/postgres/hive-schema-1.1.0.postgres.sql b/metastore/scripts/upgrade/postgres/hive-schema-1.1.0.postgres.sql
+index 7247048..6bf8f79 100644
+--- a/metastore/scripts/upgrade/postgres/hive-schema-1.1.0.postgres.sql
++++ b/metastore/scripts/upgrade/postgres/hive-schema-1.1.0.postgres.sql
+@@ -1495,4 +1495,4 @@ GRANT ALL ON SCHEMA public TO PUBLIC;
+ -- ------------------------------------------------------------------------------------------------------------------------------
+ -- Record schema version. Should be the last step in the init script. Starting CDH-5.12.0 schema version must include CDH version
+ -- ------------------------------------------------------------------------------------------------------------------------------
+-\i update-cdh-version.postgres.sql;
++INSERT INTO "VERSION" ("VER_ID", "SCHEMA_VERSION", "VERSION_COMMENT") VALUES (1, '1.1.0-cdh5.12.0', 'Hive release version 1.1.0-cdh5.12.0');
+diff --git a/metastore/scripts/upgrade/postgres/update-cdh-version.postgres.sql b/metastore/scripts/upgrade/postgres/update-cdh-version.postgres.sql
+deleted file mode 100644
+index 219da4f..0000000
+--- a/metastore/scripts/upgrade/postgres/update-cdh-version.postgres.sql
++++ /dev/null
+@@ -1 +0,0 @@
+-INSERT INTO "VERSION" ("VER_ID", "SCHEMA_VERSION", "VERSION_COMMENT") VALUES (1, '1.1.0-cdh5.13.0', 'Hive release version 1.1.0-cdh5.13.0');
+\ No newline at end of file
+-- 
+1.7.9.5
+

@@ -1,0 +1,147 @@
+From e648e738d88bf4be96b8af10beb8fa2ff26b1794 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Thu, 8 Mar 2018 10:16:53 +0100
+Subject: [PATCH 1342/1363] CDH-65899: HIVE-18060: UpdateInputAccessTimeHook
+ fails for non-current database (Oleksiy Sayankin,
+ reviewed by Marta Kuczora and Zoltan Haindrich)
+
+(cherry picked from commit 38e0b6acf9d88e245c434eac9f7702505f5eb0d9)
+
+Change-Id: I1396aba12dadecda486a4499fd95b6ef8e82c510
+(cherry picked from commit 012c5513a293fd45d5966851b72e96e786ca00b8)
+---
+ .../test/resources/testconfiguration.properties    |    1 +
+ .../hive/ql/hooks/UpdateInputAccessTimeHook.java   |   17 +++----
+ .../update_access_time_non_current_db.q            |    9 ++++
+ .../update_access_time_non_current_db.q.out        |   47 ++++++++++++++++++++
+ 4 files changed, 66 insertions(+), 8 deletions(-)
+ create mode 100644 ql/src/test/queries/clientpositive/update_access_time_non_current_db.q
+ create mode 100644 ql/src/test/results/clientpositive/update_access_time_non_current_db.q.out
+
+diff --git a/itests/src/test/resources/testconfiguration.properties b/itests/src/test/resources/testconfiguration.properties
+index a30703a..b5a76a5 100644
+--- a/itests/src/test/resources/testconfiguration.properties
++++ b/itests/src/test/resources/testconfiguration.properties
+@@ -175,6 +175,7 @@ minitez.query.files.shared=alter_merge_2_orc.q,\
+   union7.q,\
+   union8.q,\
+   union9.q,\
++  update_access_time_non_current_db.q,\
+   update_after_multiple_inserts.q,\
+   update_all_non_partitioned.q,\
+   update_all_partitioned.q,\
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/hooks/UpdateInputAccessTimeHook.java b/ql/src/java/org/apache/hadoop/hive/ql/hooks/UpdateInputAccessTimeHook.java
+index 0e8807e..e67bab1 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/hooks/UpdateInputAccessTimeHook.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/hooks/UpdateInputAccessTimeHook.java
+@@ -18,10 +18,7 @@
+ package org.apache.hadoop.hive.ql.hooks;
+ 
+ import java.util.Set;
+-import java.util.LinkedHashMap;
+-import java.util.Map;
+ 
+-import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.ql.session.SessionState;
+ import org.apache.hadoop.security.UserGroupInformation;
+ import org.apache.hadoop.hive.ql.metadata.Hive;
+@@ -64,19 +61,23 @@ public void run(SessionState sess, Set<ReadEntity> inputs,
+         // of the object, before it was modified by StatsTask.
+         // Get the latest versions of the object
+         case TABLE: {
+-          Table t = db.getTable(re.getTable().getTableName());
++          String dbName = re.getTable().getDbName();
++          String tblName = re.getTable().getTableName();
++          Table t = db.getTable(dbName, tblName);
+           t.setLastAccessTime(lastAccessTime);
+-          db.alterTable(t.getDbName() + "." + t.getTableName(), t);
++          db.alterTable(dbName + "." + tblName, t);
+           break;
+         }
+         case PARTITION: {
++          String dbName = re.getTable().getDbName();
++          String tblName = re.getTable().getTableName();
+           Partition p = re.getPartition();
+-          Table t = db.getTable(p.getTable().getTableName());
++          Table t = db.getTable(dbName, tblName);
+           p = db.getPartition(t, p.getSpec(), false);
+           p.setLastAccessTime(lastAccessTime);
+-          db.alterPartition(t.getTableName(), p);
++          db.alterPartition(dbName, tblName, p);
+           t.setLastAccessTime(lastAccessTime);
+-          db.alterTable(t.getDbName() + "." + t.getTableName(), t);
++          db.alterTable(dbName + "." + tblName, t);
+           break;
+         }
+         default:
+diff --git a/ql/src/test/queries/clientpositive/update_access_time_non_current_db.q b/ql/src/test/queries/clientpositive/update_access_time_non_current_db.q
+new file mode 100644
+index 0000000..2fdfd7c
+--- /dev/null
++++ b/ql/src/test/queries/clientpositive/update_access_time_non_current_db.q
+@@ -0,0 +1,9 @@
++create database temp1;
++use temp1;
++create table test1(id int);
++create database temp2;
++use temp2;
++create table test2(id int);
++set hive.exec.pre.hooks=org.apache.hadoop.hive.ql.hooks.UpdateInputAccessTimeHook$PreExec;
++use temp1;
++desc temp2.test2;
+diff --git a/ql/src/test/results/clientpositive/update_access_time_non_current_db.q.out b/ql/src/test/results/clientpositive/update_access_time_non_current_db.q.out
+new file mode 100644
+index 0000000..7fda3ac
+--- /dev/null
++++ b/ql/src/test/results/clientpositive/update_access_time_non_current_db.q.out
+@@ -0,0 +1,47 @@
++PREHOOK: query: create database temp1
++PREHOOK: type: CREATEDATABASE
++PREHOOK: Output: database:temp1
++POSTHOOK: query: create database temp1
++POSTHOOK: type: CREATEDATABASE
++POSTHOOK: Output: database:temp1
++PREHOOK: query: use temp1
++PREHOOK: type: SWITCHDATABASE
++PREHOOK: Input: database:temp1
++POSTHOOK: query: use temp1
++POSTHOOK: type: SWITCHDATABASE
++POSTHOOK: Input: database:temp1
++PREHOOK: query: create table test1(id int)
++PREHOOK: type: CREATETABLE
++PREHOOK: Output: database:temp1
++PREHOOK: Output: temp1@test1
++POSTHOOK: query: create table test1(id int)
++POSTHOOK: type: CREATETABLE
++POSTHOOK: Output: database:temp1
++POSTHOOK: Output: temp1@test1
++PREHOOK: query: create database temp2
++PREHOOK: type: CREATEDATABASE
++PREHOOK: Output: database:temp2
++POSTHOOK: query: create database temp2
++POSTHOOK: type: CREATEDATABASE
++POSTHOOK: Output: database:temp2
++PREHOOK: query: use temp2
++PREHOOK: type: SWITCHDATABASE
++PREHOOK: Input: database:temp2
++POSTHOOK: query: use temp2
++POSTHOOK: type: SWITCHDATABASE
++POSTHOOK: Input: database:temp2
++PREHOOK: query: create table test2(id int)
++PREHOOK: type: CREATETABLE
++PREHOOK: Output: database:temp2
++PREHOOK: Output: temp2@test2
++POSTHOOK: query: create table test2(id int)
++POSTHOOK: type: CREATETABLE
++POSTHOOK: Output: database:temp2
++POSTHOOK: Output: temp2@test2
++POSTHOOK: query: use temp1
++POSTHOOK: type: SWITCHDATABASE
++POSTHOOK: Input: database:temp1
++POSTHOOK: query: desc temp2.test2
++POSTHOOK: type: DESCTABLE
++POSTHOOK: Input: temp2@test2
++id                  	int                 	                    
+-- 
+1.7.9.5
+

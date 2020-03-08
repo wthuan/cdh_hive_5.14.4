@@ -1,0 +1,30 @@
+From b5f6bcb67779fe25311f5b585348adcd61a26cc1 Mon Sep 17 00:00:00 2001
+From: Gopal V <gopalv@apache.org>
+Date: Fri, 8 Jul 2016 16:20:38 -0700
+Subject: [PATCH 1169/1363] HIVE-14178 : Hive::needsToCopy should reuse
+ FileUtils::equalsFileSystem (Gopal V via Ashutosh
+ Chauhan)
+
+(cherry picked from commit 2e47ac1c3fc05d58097b7e4f7a8f209922b87b66)
+
+Change-Id: I59c0a196ab7b93d28b01fc341d7ef5e9b3269652
+---
+ .../org/apache/hadoop/hive/ql/metadata/Hive.java   |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/metadata/Hive.java b/ql/src/java/org/apache/hadoop/hive/ql/metadata/Hive.java
+index e516cd3..4da83d6 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/metadata/Hive.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/metadata/Hive.java
+@@ -2965,7 +2965,7 @@ public Void call() throws Exception {
+    */
+   static protected boolean needToCopy(Path srcf, Path destf, FileSystem srcFs, FileSystem destFs) throws HiveException {
+     //Check if different FileSystems
+-    if (!srcFs.getClass().equals(destFs.getClass())) {
++    if (!FileUtils.equalsFileSystem(srcFs, destFs)) {
+       return true;
+     }
+ 
+-- 
+1.7.9.5
+

@@ -1,0 +1,396 @@
+From e4c04a5f2740b8d69bd32dc0baf277eb0a44532e Mon Sep 17 00:00:00 2001
+From: Sun Chao <sunchao@apache.org>
+Date: Mon, 6 Apr 2015 21:14:05 +0000
+Subject: [PATCH 1196/1363] CDH-56690: HIVE-10134 - Fix test failures after
+ HIVE-10130 [Spark Branch] (Chao)
+
+git-svn-id: https://svn.apache.org/repos/asf/hive/branches/spark@1671699 13f79535-47bb-0310-9956-ffa450edef68
+
+(cherry picked from commit 457935afc7dc078c4beef7f94498a41da66ef6d6)
+
+Change-Id: I6a12da983614c71a9c8e5d04f169a8c636b61b7b
+---
+ .../org/apache/hadoop/hive/ql/plan/SparkWork.java  |    9 +--
+ .../test/queries/clientpositive/union_remove_22.q  |    2 +
+ .../queries/clientpositive/union_remove_6_subq.q   |    2 +
+ .../clientpositive/spark/union_remove_22.q.out     |   68 ++++++++++----------
+ .../clientpositive/spark/union_remove_6_subq.q.out |   44 ++++++-------
+ .../results/clientpositive/union_remove_22.q.out   |    8 +--
+ 6 files changed, 69 insertions(+), 64 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/plan/SparkWork.java b/ql/src/java/org/apache/hadoop/hive/ql/plan/SparkWork.java
+index 8500b21..bb5dd79 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/plan/SparkWork.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/plan/SparkWork.java
+@@ -25,6 +25,7 @@
+ import java.util.Collections;
+ import java.util.HashMap;
+ import java.util.HashSet;
++import java.util.LinkedHashSet;
+ import java.util.LinkedList;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+@@ -47,8 +48,8 @@
+   private static int counter;
+   private final String name;
+ 
+-  private final Set<BaseWork> roots = new HashSet<BaseWork>();
+-  private final Set<BaseWork> leaves = new HashSet<BaseWork>();
++  private final Set<BaseWork> roots = new LinkedHashSet<BaseWork>();
++  private final Set<BaseWork> leaves = new LinkedHashSet<>();
+ 
+   protected final Map<BaseWork, List<BaseWork>> workGraph =
+       new HashMap<BaseWork, List<BaseWork>>();
+@@ -182,14 +183,14 @@ public void disconnect(BaseWork a, BaseWork b) {
+    * getRoots returns all nodes that do not have a parent.
+    */
+   public Set<BaseWork> getRoots() {
+-    return new HashSet<BaseWork>(roots);
++    return new LinkedHashSet<BaseWork>(roots);
+   }
+ 
+   /**
+    * getLeaves returns all nodes that do not have a child
+    */
+   public Set<BaseWork> getLeaves() {
+-    return new HashSet<BaseWork>(leaves);
++    return new LinkedHashSet<BaseWork>(leaves);
+   }
+ 
+   public void setRequiredCounterPrefix(Map<String, List<String>> requiredCounterPrefix) {
+diff --git a/ql/src/test/queries/clientpositive/union_remove_22.q b/ql/src/test/queries/clientpositive/union_remove_22.q
+index 982912b..7c4fedf 100644
+--- a/ql/src/test/queries/clientpositive/union_remove_22.q
++++ b/ql/src/test/queries/clientpositive/union_remove_22.q
+@@ -7,6 +7,8 @@ set hive.merge.mapfiles=false;
+ set hive.merge.mapredfiles=false;
+ set mapred.input.dir.recursive=true;
+ 
++-- SORT_QUERY_RESULTS
++
+ -- This is to test the union->selectstar->filesink optimization
+ -- Union of 2 map-reduce subqueries is performed followed by select and a file sink
+ -- However, some columns are repeated. So, union cannot be removed.
+diff --git a/ql/src/test/queries/clientpositive/union_remove_6_subq.q b/ql/src/test/queries/clientpositive/union_remove_6_subq.q
+index 8bcac6f..225d0b0 100644
+--- a/ql/src/test/queries/clientpositive/union_remove_6_subq.q
++++ b/ql/src/test/queries/clientpositive/union_remove_6_subq.q
+@@ -6,6 +6,8 @@ set hive.merge.mapfiles=false;
+ set hive.merge.mapredfiles=false;
+ set mapred.input.dir.recursive=true;
+ 
++-- SORT_QUERY_RESULTS
++
+ -- This is to test the union->selectstar->filesink optimization
+ -- Union of 2 subqueries is performed (all of which are mapred queries)
+ -- followed by select star and a file sink in 2 output tables.
+diff --git a/ql/src/test/results/clientpositive/spark/union_remove_22.q.out b/ql/src/test/results/clientpositive/spark/union_remove_22.q.out
+index 06ce219..c562493 100644
+--- a/ql/src/test/results/clientpositive/spark/union_remove_22.q.out
++++ b/ql/src/test/results/clientpositive/spark/union_remove_22.q.out
+@@ -6,11 +6,11 @@ POSTHOOK: query: create table inputTbl1(key string, val string) stored as textfi
+ POSTHOOK: type: CREATETABLE
+ POSTHOOK: Output: database:default
+ POSTHOOK: Output: default@inputTbl1
+-PREHOOK: query: create table outputTbl1(key string, `values` bigint, values2 bigint) stored as textfile
++PREHOOK: query: create table outputTbl1(key string, values bigint, values2 bigint) stored as textfile
+ PREHOOK: type: CREATETABLE
+ PREHOOK: Output: database:default
+ PREHOOK: Output: default@outputTbl1
+-POSTHOOK: query: create table outputTbl1(key string, `values` bigint, values2 bigint) stored as textfile
++POSTHOOK: query: create table outputTbl1(key string, values bigint, values2 bigint) stored as textfile
+ POSTHOOK: type: CREATETABLE
+ POSTHOOK: Output: database:default
+ POSTHOOK: Output: default@outputTbl1
+@@ -24,20 +24,20 @@ POSTHOOK: type: LOAD
+ POSTHOOK: Output: default@inputtbl1
+ PREHOOK: query: explain
+ insert overwrite table outputTbl1
+-SELECT a.key, a.`values`, a.`values`
++SELECT a.key, a.values, a.values
+ FROM (
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   UNION ALL
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+ ) a
+ PREHOOK: type: QUERY
+ POSTHOOK: query: explain
+ insert overwrite table outputTbl1
+-SELECT a.key, a.`values`, a.`values`
++SELECT a.key, a.values, a.values
+ FROM (
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   UNION ALL
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+ ) a
+ POSTHOOK: type: QUERY
+ STAGE DEPENDENCIES:
+@@ -146,28 +146,28 @@ STAGE PLANS:
+               name: default.outputtbl1
+ 
+ PREHOOK: query: insert overwrite table outputTbl1
+-SELECT a.key, a.`values`, a.`values`
++SELECT a.key, a.values, a.values
+ FROM (
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   UNION ALL
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+ ) a
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@inputtbl1
+ PREHOOK: Output: default@outputtbl1
+ POSTHOOK: query: insert overwrite table outputTbl1
+-SELECT a.key, a.`values`, a.`values`
++SELECT a.key, a.values, a.values
+ FROM (
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   UNION ALL
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+ ) a
+ POSTHOOK: type: QUERY
+ POSTHOOK: Input: default@inputtbl1
+ POSTHOOK: Output: default@outputtbl1
+-POSTHOOK: Lineage: outputtbl1.key EXPRESSION [(inputtbl1)inputtbl1.FieldSchema(name:key, type:string, comment:null), (inputtbl1)inputtbl1.FieldSchema(name:key, type:string, comment:null), ]
+-POSTHOOK: Lineage: outputtbl1.values EXPRESSION [(inputtbl1)inputtbl1.null, (inputtbl1)inputtbl1.null, ]
+-POSTHOOK: Lineage: outputtbl1.values2 EXPRESSION [(inputtbl1)inputtbl1.null, (inputtbl1)inputtbl1.null, ]
++POSTHOOK: Lineage: outputtbl1.key EXPRESSION [(inputtbl1)inputtbl1.FieldSchema(name:key, type:string, comment:null), ]
++POSTHOOK: Lineage: outputtbl1.values EXPRESSION [(inputtbl1)inputtbl1.null, ]
++POSTHOOK: Lineage: outputtbl1.values2 EXPRESSION [(inputtbl1)inputtbl1.null, ]
+ PREHOOK: query: desc formatted outputTbl1
+ PREHOOK: type: DESCTABLE
+ PREHOOK: Input: default@outputtbl1
+@@ -225,20 +225,20 @@ POSTHOOK: Input: default@outputtbl1
+ 8	2	2
+ PREHOOK: query: explain
+ insert overwrite table outputTbl1
+-SELECT a.key, concat(a.`values`, a.`values`), concat(a.`values`, a.`values`)
++SELECT a.key, concat(a.values, a.values), concat(a.values, a.values)
+ FROM (
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   UNION ALL
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+ ) a
+ PREHOOK: type: QUERY
+ POSTHOOK: query: explain
+ insert overwrite table outputTbl1
+-SELECT a.key, concat(a.`values`, a.`values`), concat(a.`values`, a.`values`)
++SELECT a.key, concat(a.values, a.values), concat(a.values, a.values)
+ FROM (
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   UNION ALL
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+ ) a
+ POSTHOOK: type: QUERY
+ STAGE DEPENDENCIES:
+@@ -347,33 +347,33 @@ STAGE PLANS:
+               name: default.outputtbl1
+ 
+ PREHOOK: query: insert overwrite table outputTbl1
+-SELECT a.key, concat(a.`values`, a.`values`), concat(a.`values`, a.`values`)
++SELECT a.key, concat(a.values, a.values), concat(a.values, a.values)
+ FROM (
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   UNION ALL
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+ ) a
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@inputtbl1
+ PREHOOK: Output: default@outputtbl1
+ POSTHOOK: query: insert overwrite table outputTbl1
+-SELECT a.key, concat(a.`values`, a.`values`), concat(a.`values`, a.`values`)
++SELECT a.key, concat(a.values, a.values), concat(a.values, a.values)
+ FROM (
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   UNION ALL
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+ ) a
+ POSTHOOK: type: QUERY
+ POSTHOOK: Input: default@inputtbl1
+ POSTHOOK: Output: default@outputtbl1
+-POSTHOOK: Lineage: outputtbl1.key EXPRESSION [(inputtbl1)inputtbl1.FieldSchema(name:key, type:string, comment:null), (inputtbl1)inputtbl1.FieldSchema(name:key, type:string, comment:null), ]
+-POSTHOOK: Lineage: outputtbl1.values EXPRESSION [(inputtbl1)inputtbl1.null, (inputtbl1)inputtbl1.null, ]
+-POSTHOOK: Lineage: outputtbl1.values2 EXPRESSION [(inputtbl1)inputtbl1.null, (inputtbl1)inputtbl1.null, ]
+-PREHOOK: query: select * from outputTbl1 order by key, `values`
++POSTHOOK: Lineage: outputtbl1.key EXPRESSION [(inputtbl1)inputtbl1.FieldSchema(name:key, type:string, comment:null), ]
++POSTHOOK: Lineage: outputtbl1.values EXPRESSION [(inputtbl1)inputtbl1.null, ]
++POSTHOOK: Lineage: outputtbl1.values2 EXPRESSION [(inputtbl1)inputtbl1.null, ]
++PREHOOK: query: select * from outputTbl1 order by key, values
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@outputtbl1
+ #### A masked pattern was here ####
+-POSTHOOK: query: select * from outputTbl1 order by key, `values`
++POSTHOOK: query: select * from outputTbl1 order by key, values
+ POSTHOOK: type: QUERY
+ POSTHOOK: Input: default@outputtbl1
+ #### A masked pattern was here ####
+diff --git a/ql/src/test/results/clientpositive/spark/union_remove_6_subq.q.out b/ql/src/test/results/clientpositive/spark/union_remove_6_subq.q.out
+index ea346e8..eb018cb 100644
+--- a/ql/src/test/results/clientpositive/spark/union_remove_6_subq.q.out
++++ b/ql/src/test/results/clientpositive/spark/union_remove_6_subq.q.out
+@@ -6,19 +6,19 @@ POSTHOOK: query: create table inputTbl1(key string, val string) stored as textfi
+ POSTHOOK: type: CREATETABLE
+ POSTHOOK: Output: database:default
+ POSTHOOK: Output: default@inputTbl1
+-PREHOOK: query: create table outputTbl1(key string, `values` bigint) stored as textfile
++PREHOOK: query: create table outputTbl1(key string, values bigint) stored as textfile
+ PREHOOK: type: CREATETABLE
+ PREHOOK: Output: database:default
+ PREHOOK: Output: default@outputTbl1
+-POSTHOOK: query: create table outputTbl1(key string, `values` bigint) stored as textfile
++POSTHOOK: query: create table outputTbl1(key string, values bigint) stored as textfile
+ POSTHOOK: type: CREATETABLE
+ POSTHOOK: Output: database:default
+ POSTHOOK: Output: default@outputTbl1
+-PREHOOK: query: create table outputTbl2(key string, `values` bigint) stored as textfile
++PREHOOK: query: create table outputTbl2(key string, values bigint) stored as textfile
+ PREHOOK: type: CREATETABLE
+ PREHOOK: Output: database:default
+ PREHOOK: Output: default@outputTbl2
+-POSTHOOK: query: create table outputTbl2(key string, `values` bigint) stored as textfile
++POSTHOOK: query: create table outputTbl2(key string, values bigint) stored as textfile
+ POSTHOOK: type: CREATETABLE
+ POSTHOOK: Output: database:default
+ POSTHOOK: Output: default@outputTbl2
+@@ -33,9 +33,9 @@ POSTHOOK: Output: default@inputtbl1
+ PREHOOK: query: explain
+ FROM (
+   select * from(
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   UNION ALL
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   )subq
+ ) a
+ insert overwrite table outputTbl1 select *
+@@ -44,9 +44,9 @@ PREHOOK: type: QUERY
+ POSTHOOK: query: explain
+ FROM (
+   select * from(
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   UNION ALL
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   )subq
+ ) a
+ insert overwrite table outputTbl1 select *
+@@ -178,9 +178,9 @@ STAGE PLANS:
+ 
+ PREHOOK: query: FROM (
+   select * from(
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   UNION ALL
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   )subq
+ ) a
+ insert overwrite table outputTbl1 select *
+@@ -191,9 +191,9 @@ PREHOOK: Output: default@outputtbl1
+ PREHOOK: Output: default@outputtbl2
+ POSTHOOK: query: FROM (
+   select * from(
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   UNION ALL
+-  SELECT key, count(1) as `values` from inputTbl1 group by key
++  SELECT key, count(1) as values from inputTbl1 group by key
+   )subq
+ ) a
+ insert overwrite table outputTbl1 select *
+@@ -202,15 +202,15 @@ POSTHOOK: type: QUERY
+ POSTHOOK: Input: default@inputtbl1
+ POSTHOOK: Output: default@outputtbl1
+ POSTHOOK: Output: default@outputtbl2
+-POSTHOOK: Lineage: outputtbl1.key EXPRESSION [(inputtbl1)inputtbl1.FieldSchema(name:key, type:string, comment:null), (inputtbl1)inputtbl1.FieldSchema(name:key, type:string, comment:null), ]
+-POSTHOOK: Lineage: outputtbl1.values EXPRESSION [(inputtbl1)inputtbl1.null, (inputtbl1)inputtbl1.null, ]
+-POSTHOOK: Lineage: outputtbl2.key EXPRESSION [(inputtbl1)inputtbl1.FieldSchema(name:key, type:string, comment:null), (inputtbl1)inputtbl1.FieldSchema(name:key, type:string, comment:null), ]
+-POSTHOOK: Lineage: outputtbl2.values EXPRESSION [(inputtbl1)inputtbl1.null, (inputtbl1)inputtbl1.null, ]
+-PREHOOK: query: select * from outputTbl1 order by key, `values`
++POSTHOOK: Lineage: outputtbl1.key EXPRESSION [(inputtbl1)inputtbl1.FieldSchema(name:key, type:string, comment:null), ]
++POSTHOOK: Lineage: outputtbl1.values EXPRESSION [(inputtbl1)inputtbl1.null, ]
++POSTHOOK: Lineage: outputtbl2.key EXPRESSION [(inputtbl1)inputtbl1.FieldSchema(name:key, type:string, comment:null), ]
++POSTHOOK: Lineage: outputtbl2.values EXPRESSION [(inputtbl1)inputtbl1.null, ]
++PREHOOK: query: select * from outputTbl1 order by key, values
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@outputtbl1
+ #### A masked pattern was here ####
+-POSTHOOK: query: select * from outputTbl1 order by key, `values`
++POSTHOOK: query: select * from outputTbl1 order by key, values
+ POSTHOOK: type: QUERY
+ POSTHOOK: Input: default@outputtbl1
+ #### A masked pattern was here ####
+@@ -224,11 +224,11 @@ POSTHOOK: Input: default@outputtbl1
+ 7	1
+ 8	2
+ 8	2
+-PREHOOK: query: select * from outputTbl2 order by key, `values`
++PREHOOK: query: select * from outputTbl2 order by key, values
+ PREHOOK: type: QUERY
+ PREHOOK: Input: default@outputtbl2
+ #### A masked pattern was here ####
+-POSTHOOK: query: select * from outputTbl2 order by key, `values`
++POSTHOOK: query: select * from outputTbl2 order by key, values
+ POSTHOOK: type: QUERY
+ POSTHOOK: Input: default@outputtbl2
+ #### A masked pattern was here ####
+@@ -501,14 +501,14 @@ STAGE PLANS:
+                         raw input shape:
+                         window functions:
+                             window function definition
+-                              alias: avg_window_0
++                              alias: _wcol0
+                               arguments: _col1
+                               name: avg
+                               window function: GenericUDAFAverageEvaluatorDouble
+                               window frame: PRECEDING(MAX)~
+                   Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+                   Select Operator
+-                    expressions: _col0 (type: string), avg_window_0 (type: double)
++                    expressions: _col0 (type: string), _wcol0 (type: double)
+                     outputColumnNames: _col0, _col1
+                     Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+                     File Output Operator
+diff --git a/ql/src/test/results/clientpositive/union_remove_22.q.out b/ql/src/test/results/clientpositive/union_remove_22.q.out
+index 76b82f8..9933264 100644
+--- a/ql/src/test/results/clientpositive/union_remove_22.q.out
++++ b/ql/src/test/results/clientpositive/union_remove_22.q.out
+@@ -209,14 +209,14 @@ POSTHOOK: type: QUERY
+ POSTHOOK: Input: default@outputtbl1
+ #### A masked pattern was here ####
+ 1	1	1
+-2	1	1
+-3	1	1
+-7	1	1
+-8	2	2
+ 1	1	1
+ 2	1	1
++2	1	1
++3	1	1
+ 3	1	1
+ 7	1	1
++7	1	1
++8	2	2
+ 8	2	2
+ PREHOOK: query: explain
+ insert overwrite table outputTbl1
+-- 
+1.7.9.5
+

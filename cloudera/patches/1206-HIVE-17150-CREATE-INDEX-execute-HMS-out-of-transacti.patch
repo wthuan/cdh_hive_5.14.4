@@ -1,0 +1,424 @@
+From 7d8f97f15af25560cf160c75d840e01498aea724 Mon Sep 17 00:00:00 2001
+From: Sergio Pena <sergio.pena@cloudera.com>
+Date: Mon, 24 Jul 2017 16:52:49 -0500
+Subject: [PATCH 1206/1363] HIVE-17150: CREATE INDEX execute HMS
+ out-of-transaction listener calls inside a
+ transaction (Sergio Pena, reviewed by Vihang
+ Karajgaonkar)
+
+Change-Id: Icbef90aec55059342c3099e1e39b32fd9bbfb2d3
+---
+ .../hcatalog/listener/DbNotificationListener.java  |    1 +
+ .../listener/MetaStoreEventListenerConstants.java  |   33 ----------------
+ .../hcatalog/listener/DummyRawStoreFailEvent.java  |    5 +++
+ .../listener/TestDbNotificationListener.java       |    1 +
+ .../hadoop/hive/metastore/HiveMetaStore.java       |   40 ++++++++++---------
+ .../metastore/MetaStoreEventListenerConstants.java |   41 ++++++++++++++++++++
+ .../hive/metastore/MetaStoreListenerNotifier.java  |   15 ++++++-
+ .../org/apache/hadoop/hive/metastore/RawStore.java |    2 +
+ .../metastore/DummyRawStoreControlledCommit.java   |    5 +++
+ .../metastore/DummyRawStoreForJdoConnection.java   |    5 +++
+ 10 files changed, 95 insertions(+), 53 deletions(-)
+ delete mode 100644 hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/listener/MetaStoreEventListenerConstants.java
+ create mode 100644 metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreEventListenerConstants.java
+
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/listener/DbNotificationListener.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/listener/DbNotificationListener.java
+index e6bdf28..542e5ec 100644
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/listener/DbNotificationListener.java
++++ b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/listener/DbNotificationListener.java
+@@ -30,6 +30,7 @@
+ import org.apache.hadoop.conf.Configuration;
+ import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.metastore.MetaStoreEventListener;
++import org.apache.hadoop.hive.metastore.MetaStoreEventListenerConstants;
+ import org.apache.hadoop.hive.metastore.RawStore;
+ import org.apache.hadoop.hive.metastore.RawStoreProxy;
+ import org.apache.hadoop.hive.metastore.api.Database;
+diff --git a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/listener/MetaStoreEventListenerConstants.java b/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/listener/MetaStoreEventListenerConstants.java
+deleted file mode 100644
+index a4f2d59..0000000
+--- a/hcatalog/server-extensions/src/main/java/org/apache/hive/hcatalog/listener/MetaStoreEventListenerConstants.java
++++ /dev/null
+@@ -1,33 +0,0 @@
+-/**
+- * Licensed to the Apache Software Foundation (ASF) under one
+- * or more contributor license agreements.  See the NOTICE file
+- * distributed with this work for additional information
+- * regarding copyright ownership.  The ASF licenses this file
+- * to you under the Apache License, Version 2.0 (the
+- * "License"); you may not use this file except in compliance
+- * with the License.  You may obtain a copy of the License at
+- *
+- *     http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-package org.apache.hive.hcatalog.listener;
+-
+-/**
+- * Keeps a list of reserved keys used by Hive listeners when updating the ListenerEvent
+- * parameters.
+- */
+-public class MetaStoreEventListenerConstants {
+-  /*
+-   * DbNotificationListener keys reserved for updating ListenerEvent parameters.
+-   *
+-   * DB_NOTIFICATION_EVENT_ID_KEY_NAME This key will have the event identifier that DbNotificationListener
+-   *                                   processed during an event. This event identifier might be shared
+-   *                                   across other MetaStoreEventListener implementations.
+-   */
+-  public static final String DB_NOTIFICATION_EVENT_ID_KEY_NAME = "DB_NOTIFICATION_EVENT_ID_KEY_NAME";
+-}
+\ No newline at end of file
+diff --git a/itests/hcatalog-unit/src/test/java/org/apache/hive/hcatalog/listener/DummyRawStoreFailEvent.java b/itests/hcatalog-unit/src/test/java/org/apache/hive/hcatalog/listener/DummyRawStoreFailEvent.java
+index 3cfe93f..72cf7c4 100644
+--- a/itests/hcatalog-unit/src/test/java/org/apache/hive/hcatalog/listener/DummyRawStoreFailEvent.java
++++ b/itests/hcatalog-unit/src/test/java/org/apache/hive/hcatalog/listener/DummyRawStoreFailEvent.java
+@@ -93,6 +93,11 @@ public boolean commitTransaction() {
+   }
+ 
+   @Override
++  public boolean isActiveTransaction() {
++    return false;
++  }
++
++  @Override
+   public Configuration getConf() {
+     return objectStore.getConf();
+   }
+diff --git a/itests/hcatalog-unit/src/test/java/org/apache/hive/hcatalog/listener/TestDbNotificationListener.java b/itests/hcatalog-unit/src/test/java/org/apache/hive/hcatalog/listener/TestDbNotificationListener.java
+index 5977845..a39ebe9 100644
+--- a/itests/hcatalog-unit/src/test/java/org/apache/hive/hcatalog/listener/TestDbNotificationListener.java
++++ b/itests/hcatalog-unit/src/test/java/org/apache/hive/hcatalog/listener/TestDbNotificationListener.java
+@@ -54,6 +54,7 @@
+ import org.apache.hadoop.hive.metastore.HiveMetaStoreClient;
+ import org.apache.hadoop.hive.metastore.IMetaStoreClient;
+ import org.apache.hadoop.hive.metastore.MetaStoreEventListener;
++import org.apache.hadoop.hive.metastore.MetaStoreEventListenerConstants;
+ import org.apache.hadoop.hive.metastore.api.Database;
+ import org.apache.hadoop.hive.metastore.api.FieldSchema;
+ import org.apache.hadoop.hive.metastore.api.FireEventRequest;
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java
+index b539a4f..603f744 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/HiveMetaStore.java
+@@ -962,7 +962,7 @@ private void create_database_core(RawStore ms, final Database db)
+                                                 EventType.CREATE_DATABASE,
+                                                 new CreateDatabaseEvent(db, success, this),
+                                                 null,
+-                                                transactionalListenersResponses);
++                                                transactionalListenersResponses, ms);
+         }
+       }
+     }
+@@ -1194,7 +1194,7 @@ private void drop_database_core(RawStore ms,
+                                                 EventType.DROP_DATABASE,
+                                                 new DropDatabaseEvent(db, success, this),
+                                                 null,
+-                                                transactionalListenerResponses);
++                                                transactionalListenerResponses, ms);
+         }
+       }
+     }
+@@ -1535,7 +1535,7 @@ private void create_table_core(final RawStore ms, final Table tbl,
+                                                 EventType.CREATE_TABLE,
+                                                 new CreateTableEvent(tbl, success, this),
+                                                 envContext,
+-                                                transactionalListenerResponses);
++                                                transactionalListenerResponses, ms);
+         }
+       }
+     }
+@@ -1669,7 +1669,7 @@ private boolean drop_table_core(final RawStore ms, final String dbname, final St
+                                                 EventType.DROP_TABLE,
+                                                 new DropTableEvent(tbl, deleteData, success, this),
+                                                 envContext,
+-                                                transactionalListenerResponses);
++                                                transactionalListenerResponses, ms);
+         }
+       }
+       return success;
+@@ -2120,7 +2120,7 @@ private Partition append_partition_common(RawStore ms, String dbName, String tab
+                                                 EventType.ADD_PARTITION,
+                                                 new AddPartitionEvent(tbl, part, success, this),
+                                                 envContext,
+-                                                transactionalListenerResponses);
++                                                transactionalListenerResponses, ms);
+         }
+       }
+       return part;
+@@ -2369,7 +2369,8 @@ public Object run() throws Exception {
+           if (!listeners.isEmpty()) {
+             MetaStoreListenerNotifier.notifyEvent(listeners,
+                                                   EventType.ADD_PARTITION,
+-                                                  new AddPartitionEvent(tbl, parts, false, this));
++                                                  new AddPartitionEvent(tbl, parts, false, this),
++                                                  null, null, ms);
+           }
+         } else {
+           if (!listeners.isEmpty()) {
+@@ -2377,13 +2378,14 @@ public Object run() throws Exception {
+                                                   EventType.ADD_PARTITION,
+                                                   new AddPartitionEvent(tbl, result, true, this),
+                                                   null,
+-                                                  transactionalListenerResponses);
++                                                  transactionalListenerResponses, ms);
+ 
+             if (!existingParts.isEmpty()) {
+               // The request has succeeded but we failed to add these partitions.
+               MetaStoreListenerNotifier.notifyEvent(listeners,
+                                                     EventType.ADD_PARTITION,
+-                                                    new AddPartitionEvent(tbl, existingParts, false, this));
++                                                    new AddPartitionEvent(tbl, existingParts, false, this),
++                                                    null, null, ms);
+             }
+           }
+         }
+@@ -2573,7 +2575,7 @@ public Object run() throws Exception {
+                                                 EventType.ADD_PARTITION,
+                                                 new AddPartitionEvent(tbl, partitionSpecProxy, true, this),
+                                                 null,
+-                                                transactionalListenerResponses);
++                                                transactionalListenerResponses, ms);
+         }
+       }
+     }
+@@ -2727,7 +2729,7 @@ private Partition add_partition_core(final RawStore ms,
+                                                 EventType.ADD_PARTITION,
+                                                 new AddPartitionEvent(tbl, Arrays.asList(part), success, this),
+                                                 envContext,
+-                                                transactionalListenerResponses);
++                                                transactionalListenerResponses, ms);
+ 
+         }
+       }
+@@ -2881,7 +2883,7 @@ public Partition exchange_partition(Map<String, String> partitionSpecs,
+                                                 EventType.ADD_PARTITION,
+                                                 addPartitionEvent,
+                                                 null,
+-                                                transactionalListenerResponsesForAddPartition);
++                                                transactionalListenerResponsesForAddPartition, ms);
+ 
+           i = 0;
+           for (Partition partition : partitionsToExchange) {
+@@ -2896,7 +2898,7 @@ public Partition exchange_partition(Map<String, String> partitionSpecs,
+                                                   EventType.DROP_PARTITION,
+                                                   dropPartitionEvent,
+                                                   null,
+-                                                  parameters);
++                                                  parameters, ms);
+             i++;
+           }
+         }
+@@ -2983,7 +2985,7 @@ private boolean drop_partition_common(RawStore ms, String db_name, String tbl_na
+                                                 EventType.DROP_PARTITION,
+                                                 new DropPartitionEvent(tbl, part, success, deleteData, this),
+                                                 envContext,
+-                                                transactionalListenerResponses);
++                                                transactionalListenerResponses, ms);
+         }
+       }
+       return true;
+@@ -3177,7 +3179,7 @@ public DropPartitionsResult drop_partitions_req(
+                                                     EventType.DROP_PARTITION,
+                                                     new DropPartitionEvent(tbl, part, success, deleteData, this),
+                                                     envContext,
+-                                                    parameters);
++                                                    parameters, ms);
+ 
+               i++;
+             }
+@@ -3758,7 +3760,7 @@ public void alter_index(final String dbname, final String base_table_name,
+                                                 EventType.ALTER_INDEX,
+                                                 new AlterIndexEvent(oldIndex, newIndex, success, this),
+                                                 null,
+-                                                transactionalListenerResponses);
++                                                transactionalListenerResponses, ms);
+         }
+       }
+     }
+@@ -4432,7 +4434,7 @@ private Index add_index_core(final RawStore ms, final Index index, final Table i
+                                                 EventType.CREATE_INDEX,
+                                                 new AddIndexEvent(index, success, this),
+                                                 null,
+-                                                transactionalListenerResponses);
++                                                transactionalListenerResponses, ms);
+         }
+       }
+     }
+@@ -4525,7 +4527,7 @@ private boolean drop_index_by_name_core(final RawStore ms,
+                                                 EventType.DROP_INDEX,
+                                                 new DropIndexEvent(index, success, this),
+                                                 null,
+-                                                transactionalListenerResponses);
++                                                transactionalListenerResponses, ms);
+         }
+       }
+       return success;
+@@ -5937,7 +5939,7 @@ public void create_function(Function func) throws AlreadyExistsException,
+                                                 EventType.CREATE_FUNCTION,
+                                                 new CreateFunctionEvent(func, success, this),
+                                                 null,
+-                                                transactionalListenerResponses);
++                                                transactionalListenerResponses, ms);
+         }
+       }
+     }
+@@ -5976,7 +5978,7 @@ public void drop_function(String dbName, String funcName)
+                                                 EventType.DROP_FUNCTION,
+                                                 new DropFunctionEvent(func, success, this),
+                                                 null,
+-                                                transactionalListenerResponses);
++                                                transactionalListenerResponses, ms);
+         }
+       }
+     }
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreEventListenerConstants.java b/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreEventListenerConstants.java
+new file mode 100644
+index 0000000..79de79d
+--- /dev/null
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreEventListenerConstants.java
+@@ -0,0 +1,41 @@
++/**
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.hadoop.hive.metastore;
++
++/**
++ * Keeps a list of reserved keys used by Hive listeners when updating the ListenerEvent
++ * parameters.
++ */
++public class MetaStoreEventListenerConstants {
++  /*
++   * DbNotificationListener keys reserved for updating ListenerEvent parameters.
++   *
++   * DB_NOTIFICATION_EVENT_ID_KEY_NAME This key will have the event identifier that DbNotificationListener
++   *                                   processed during an event. This event identifier might be shared
++   *                                   across other MetaStoreEventListener implementations.
++   */
++  public static final String DB_NOTIFICATION_EVENT_ID_KEY_NAME = "DB_NOTIFICATION_EVENT_ID_KEY_NAME";
++
++  /*
++   * HiveMetaStore keys reserved for updating ListenerEvent parameters.
++   *
++   * HIVE_METASTORE_TRANSACTION_ACTIVE This key is used to check if a listener event is run inside a current
++   *                                   transaction. A boolean value is used for active (true) or no active (false).
++   */
++  public static final String HIVE_METASTORE_TRANSACTION_ACTIVE = "HIVE_METASTORE_TRANSACTION_ACTIVE";
++}
+\ No newline at end of file
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreListenerNotifier.java b/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreListenerNotifier.java
+index 20011cc..37327f8 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreListenerNotifier.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreListenerNotifier.java
+@@ -43,6 +43,7 @@
+ import java.util.List;
+ import java.util.Map;
+ 
++import static org.apache.hadoop.hive.metastore.MetaStoreEventListenerConstants.HIVE_METASTORE_TRANSACTION_ACTIVE;
+ import static org.apache.hadoop.hive.metastore.messaging.EventMessage.EventType;
+ 
+ /**
+@@ -201,11 +202,17 @@ public void notify(MetaStoreEventListener listener, ListenerEvent event) throws
+    * the (ListenerEvent) event by setting a parameter key/value pair. These updated parameters will
+    * be returned to the caller.
+    *
++   * Sometimes these events are run inside a DB transaction and might cause issues with the listeners,
++   * for instance, Sentry blocks the HMS until an event is seen committed on the DB. To notify the listener about this,
++   * a new parameter to verify if a transaction is active is added to the ListenerEvent, and is up to the listener
++   * to skip this notification if so.
++   *
+    * @param listeners List of MetaStoreEventListener listeners.
+    * @param eventType Type of the notification event.
+    * @param event The ListenerEvent with information about the event.
+    * @param environmentContext An EnvironmentContext object with parameters sent by the HMS client.
+    * @param parameters A list of key/value pairs with the new parameters to add.
++   * @param ms The RawStore object from where to check if a transaction is active.
+    * @return A list of key/value pair parameters that the listeners set. The returned object will return an empty
+    *         map if no parameters were updated or if no listeners were notified.
+    * @throws MetaException If an error occurred while calling the listeners.
+@@ -214,11 +221,17 @@ public void notify(MetaStoreEventListener listener, ListenerEvent event) throws
+                                                 EventType eventType,
+                                                 ListenerEvent event,
+                                                 EnvironmentContext environmentContext,
+-                                                Map<String, String> parameters) throws MetaException {
++                                                Map<String, String> parameters,
++                                                final RawStore ms) throws MetaException {
+ 
+     Preconditions.checkNotNull(event, "The event must not be null.");
+ 
+     event.putParameters(parameters);
++
++    if (ms != null) {
++      event.putParameter(HIVE_METASTORE_TRANSACTION_ACTIVE, Boolean.toString(ms.isActiveTransaction()));
++    }
++
+     return notifyEvent(listeners, eventType, event, environmentContext);
+   }
+ }
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/RawStore.java b/metastore/src/java/org/apache/hadoop/hive/metastore/RawStore.java
+index 57c754b..8840f64 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/RawStore.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/RawStore.java
+@@ -97,6 +97,8 @@
+   @CanNotRetry
+   public abstract boolean commitTransaction();
+ 
++  public boolean isActiveTransaction();
++
+   /**
+    * Rolls back the current transaction if it is active
+    */
+diff --git a/metastore/src/test/org/apache/hadoop/hive/metastore/DummyRawStoreControlledCommit.java b/metastore/src/test/org/apache/hadoop/hive/metastore/DummyRawStoreControlledCommit.java
+index 968ea79..1b1bf27 100644
+--- a/metastore/src/test/org/apache/hadoop/hive/metastore/DummyRawStoreControlledCommit.java
++++ b/metastore/src/test/org/apache/hadoop/hive/metastore/DummyRawStoreControlledCommit.java
+@@ -100,6 +100,11 @@ public boolean commitTransaction() {
+     }
+   }
+ 
++  @Override
++  public boolean isActiveTransaction() {
++    return false;
++  }
++
+   // All remaining functions simply delegate to objectStore
+ 
+   @Override
+diff --git a/metastore/src/test/org/apache/hadoop/hive/metastore/DummyRawStoreForJdoConnection.java b/metastore/src/test/org/apache/hadoop/hive/metastore/DummyRawStoreForJdoConnection.java
+index 3287993..9078cef 100644
+--- a/metastore/src/test/org/apache/hadoop/hive/metastore/DummyRawStoreForJdoConnection.java
++++ b/metastore/src/test/org/apache/hadoop/hive/metastore/DummyRawStoreForJdoConnection.java
+@@ -110,6 +110,11 @@ public boolean commitTransaction() {
+   }
+ 
+   @Override
++  public boolean isActiveTransaction() {
++    return false;
++  }
++
++  @Override
+   public void rollbackTransaction() {
+ 
+ 
+-- 
+1.7.9.5
+

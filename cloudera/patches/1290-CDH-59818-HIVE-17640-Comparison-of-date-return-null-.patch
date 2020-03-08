@@ -1,0 +1,96 @@
+From d52790e79202eca8bb018cf9c375ff965513241d Mon Sep 17 00:00:00 2001
+From: Yongzhi Chen <ychen@cloudera.com>
+Date: Fri, 29 Sep 2017 09:52:52 -0400
+Subject: [PATCH 1290/1363] CDH-59818: HIVE-17640: Comparison of date return
+ null if time part is provided in string.         
+   This is a partial backport of HIVE-16614
+ Change-Id:
+ I68be562adcd202f222334e83a48a245e55f2121d
+
+---
+ .../queries/clientpositive/date_withtimestamp.q    |    3 +++
+ .../clientpositive/date_withtimestamp.q.out        |   27 ++++++++++++++++++++
+ .../primitive/PrimitiveObjectInspectorUtils.java   |   16 +++++++++---
+ 3 files changed, 43 insertions(+), 3 deletions(-)
+ create mode 100644 ql/src/test/queries/clientpositive/date_withtimestamp.q
+ create mode 100644 ql/src/test/results/clientpositive/date_withtimestamp.q.out
+
+diff --git a/ql/src/test/queries/clientpositive/date_withtimestamp.q b/ql/src/test/queries/clientpositive/date_withtimestamp.q
+new file mode 100644
+index 0000000..bde648a
+--- /dev/null
++++ b/ql/src/test/queries/clientpositive/date_withtimestamp.q
+@@ -0,0 +1,3 @@
++select "2016-12-29 23:59:59"  < cast("2016-12-30" as date);
++select "2016-12-30 00:00:00"  = cast("2016-12-30" as date);
++select "2016-12-31 00:00:01"  > cast("2016-12-30" as date); 
+diff --git a/ql/src/test/results/clientpositive/date_withtimestamp.q.out b/ql/src/test/results/clientpositive/date_withtimestamp.q.out
+new file mode 100644
+index 0000000..3661888
+--- /dev/null
++++ b/ql/src/test/results/clientpositive/date_withtimestamp.q.out
+@@ -0,0 +1,27 @@
++PREHOOK: query: select "2016-12-29 23:59:59"  < cast("2016-12-30" as date)
++PREHOOK: type: QUERY
++PREHOOK: Input: _dummy_database@_dummy_table
++#### A masked pattern was here ####
++POSTHOOK: query: select "2016-12-29 23:59:59"  < cast("2016-12-30" as date)
++POSTHOOK: type: QUERY
++POSTHOOK: Input: _dummy_database@_dummy_table
++#### A masked pattern was here ####
++true
++PREHOOK: query: select "2016-12-30 00:00:00"  = cast("2016-12-30" as date)
++PREHOOK: type: QUERY
++PREHOOK: Input: _dummy_database@_dummy_table
++#### A masked pattern was here ####
++POSTHOOK: query: select "2016-12-30 00:00:00"  = cast("2016-12-30" as date)
++POSTHOOK: type: QUERY
++POSTHOOK: Input: _dummy_database@_dummy_table
++#### A masked pattern was here ####
++true
++PREHOOK: query: select "2016-12-31 00:00:01"  > cast("2016-12-30" as date)
++PREHOOK: type: QUERY
++PREHOOK: Input: _dummy_database@_dummy_table
++#### A masked pattern was here ####
++POSTHOOK: query: select "2016-12-31 00:00:01"  > cast("2016-12-30" as date)
++POSTHOOK: type: QUERY
++POSTHOOK: Input: _dummy_database@_dummy_table
++#### A masked pattern was here ####
++true
+diff --git a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/PrimitiveObjectInspectorUtils.java b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/PrimitiveObjectInspectorUtils.java
+index 9bd2ac0..d59ee41 100644
+--- a/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/PrimitiveObjectInspectorUtils.java
++++ b/serde/src/java/org/apache/hadoop/hive/serde2/objectinspector/primitive/PrimitiveObjectInspectorUtils.java
+@@ -1002,16 +1002,26 @@ public static Date getDate(Object o, PrimitiveObjectInspector oi) {
+       try {
+         result = Date.valueOf(s);
+       } catch (IllegalArgumentException e) {
+-        result = null;
++        Timestamp ts = getTimestampFromString(s);
++        if (ts != null) {
++          result = new Date(ts.getTime());
++        } else {
++          result = null;
++        }
+       }
+       break;
+     case CHAR:
+     case VARCHAR: {
++      String val = getString(o, oi).trim();
+       try {
+-        String val = getString(o, oi).trim();
+         result = Date.valueOf(val);
+       } catch (IllegalArgumentException e) {
+-        result = null;
++        Timestamp ts = getTimestampFromString(val);
++        if (ts != null) {
++          result = new Date(ts.getTime());
++        } else {
++          result = null;
++        }
+       }
+       break;
+     }
+-- 
+1.7.9.5
+

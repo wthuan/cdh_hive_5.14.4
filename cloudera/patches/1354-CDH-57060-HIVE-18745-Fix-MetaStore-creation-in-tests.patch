@@ -1,0 +1,844 @@
+From c365b2ce6775ade9f801e78944a06c2bf053a9b7 Mon Sep 17 00:00:00 2001
+From: Peter Vary <pvary@cloudera.com>
+Date: Fri, 23 Mar 2018 13:55:30 +0100
+Subject: [PATCH 1354/1363] CDH-57060: HIVE-18745: Fix MetaStore creation in
+ tests, so multiple MetaStores can be started on
+ the same machine (Peter Vary, reviewed by Sahil
+ Takiar)
+
+(cherry picked from commit 2e3cb1362f0717020e93201cc3c634ae0030bf78)
+
+Change-Id: If47d575860ddbc9a05adfee35620ec2fb1d434d3
+(cherry picked from commit 844ad6ecae35c327436795818f5863a3af5401bd)
+(cherry picked from commit d9ca0725f353e433724f8e7352120ca27b2a7ed8)
+(cherry picked from commit b59a42b782becc4ce4d309ffa29b82b702f87135)
+---
+ .../org/apache/hive/hcatalog/cli/TestPermsGrp.java |    3 +-
+ .../mapreduce/TestHCatMultiOutputFormat.java       |    5 +-
+ .../mapreduce/TestHCatPartitionPublish.java        |    3 +-
+ .../apache/hive/hcatalog/api/TestHCatClient.java   |    7 +--
+ .../hadoop/hive/thrift/TestHadoopAuthBridge23.java |   23 ++++++---
+ .../AbstractTestAuthorizationApiAuthorizer.java    |    5 +-
+ .../hadoop/hive/metastore/TestFilterHooks.java     |    9 +---
+ .../TestHiveMetaStoreWithEnvironmentContext.java   |    7 +--
+ .../hive/metastore/TestMarkPartitionRemote.java    |    2 +-
+ .../hive/metastore/TestMetaStoreAuthorization.java |   19 +-------
+ .../TestMetaStoreEndFunctionListener.java          |    5 +-
+ .../hive/metastore/TestMetaStoreEventListener.java |    6 +--
+ .../TestMetaStoreEventListenerOnlyOnCommit.java    |    6 +--
+ .../hive/metastore/TestMetaStoreInitListener.java  |    6 +--
+ .../hive/metastore/TestMetaStoreMetrics.java       |    3 +-
+ .../TestPartitionNameWhitelistValidation.java      |    5 +-
+ .../hive/metastore/TestRemoteHiveMetaStore.java    |    5 +-
+ .../TestRemoteHiveMetaStoreIpAddress.java          |   13 +-----
+ .../hive/metastore/TestRetryingHMSHandler.java     |    5 +-
+ .../TestDDLWithRemoteMetastoreSecondNamenode.java  |    3 +-
+ .../hive/ql/security/FolderPermissionBase.java     |    3 +-
+ .../ql/security/StorageBasedMetastoreTestBase.java |    4 +-
+ .../TestAuthorizationPreEventListener.java         |    4 +-
+ .../TestClientSideAuthorizationProvider.java       |    4 +-
+ .../TestMetastoreAuthorizationProvider.java        |    4 +-
+ .../TestMultiAuthorizationPreEventListener.java    |    4 +-
+ .../java/org/apache/hive/jdbc/miniHS2/MiniHS2.java |    5 +-
+ .../hadoop/hive/metastore/MetaStoreUtils.java      |   49 +++++++++++++++-----
+ .../metastore/TestHiveMetaStoreGetMetaConf.java    |    2 +-
+ .../metastore/TestHiveMetaStorePartitionSpecs.java |    2 +-
+ .../hadoop/hive/ql/metadata/TestHiveRemote.java    |    5 +-
+ 31 files changed, 97 insertions(+), 129 deletions(-)
+
+diff --git a/hcatalog/core/src/test/java/org/apache/hive/hcatalog/cli/TestPermsGrp.java b/hcatalog/core/src/test/java/org/apache/hive/hcatalog/cli/TestPermsGrp.java
+index 41c6b16..96d60c8 100644
+--- a/hcatalog/core/src/test/java/org/apache/hive/hcatalog/cli/TestPermsGrp.java
++++ b/hcatalog/core/src/test/java/org/apache/hive/hcatalog/cli/TestPermsGrp.java
+@@ -80,8 +80,7 @@ protected void setUp() throws Exception {
+     }
+ 
+ 
+-    msPort = MetaStoreUtils.findFreePort();
+-    MetaStoreUtils.startMetaStore(msPort, ShimLoader.getHadoopThriftAuthBridge());
++    msPort = MetaStoreUtils.startMetaStoreWithRetry();
+ 
+     isServerRunning = true;
+ 
+diff --git a/hcatalog/core/src/test/java/org/apache/hive/hcatalog/mapreduce/TestHCatMultiOutputFormat.java b/hcatalog/core/src/test/java/org/apache/hive/hcatalog/mapreduce/TestHCatMultiOutputFormat.java
+index e385f20..7348367 100644
+--- a/hcatalog/core/src/test/java/org/apache/hive/hcatalog/mapreduce/TestHCatMultiOutputFormat.java
++++ b/hcatalog/core/src/test/java/org/apache/hive/hcatalog/mapreduce/TestHCatMultiOutputFormat.java
+@@ -158,7 +158,10 @@ public static void setup() throws Exception {
+     metastoreConf.setVar(HiveConf.ConfVars.METASTOREWAREHOUSE, warehousedir.toString());
+ 
+     // Run hive metastore server
+-    msPort = MetaStoreUtils.startMetaStore(metastoreConf);
++    msPort = MetaStoreUtils.startMetaStoreWithRetry(metastoreConf);
++    // Read the warehouse dir, which can be changed so multiple MetaStore tests could be run on
++    // the same server
++    warehousedir = new Path(metastoreConf.getVar(HiveConf.ConfVars.METASTOREWAREHOUSE));
+     // LocalJobRunner does not work with mapreduce OutputCommitter. So need
+     // to use MiniMRCluster. MAPREDUCE-2350
+     Configuration conf = new Configuration(true);
+diff --git a/hcatalog/core/src/test/java/org/apache/hive/hcatalog/mapreduce/TestHCatPartitionPublish.java b/hcatalog/core/src/test/java/org/apache/hive/hcatalog/mapreduce/TestHCatPartitionPublish.java
+index 5f9379b..1e1e729 100644
+--- a/hcatalog/core/src/test/java/org/apache/hive/hcatalog/mapreduce/TestHCatPartitionPublish.java
++++ b/hcatalog/core/src/test/java/org/apache/hive/hcatalog/mapreduce/TestHCatPartitionPublish.java
+@@ -106,8 +106,7 @@ public static void setup() throws Exception {
+ 
+     msPort = MetaStoreUtils.findFreePort();
+ 
+-    MetaStoreUtils.startMetaStore(msPort, ShimLoader
+-        .getHadoopThriftAuthBridge());
++    msPort = MetaStoreUtils.startMetaStoreWithRetry();
+     Thread.sleep(10000);
+     isServerRunning = true;
+     securityManager = System.getSecurityManager();
+diff --git a/hcatalog/webhcat/java-client/src/test/java/org/apache/hive/hcatalog/api/TestHCatClient.java b/hcatalog/webhcat/java-client/src/test/java/org/apache/hive/hcatalog/api/TestHCatClient.java
+index 3bd457e..3734f0c 100644
+--- a/hcatalog/webhcat/java-client/src/test/java/org/apache/hive/hcatalog/api/TestHCatClient.java
++++ b/hcatalog/webhcat/java-client/src/test/java/org/apache/hive/hcatalog/api/TestHCatClient.java
+@@ -116,7 +116,7 @@ public static void startMetaStoreServer() throws Exception {
+ 
+     System.setProperty(HiveConf.ConfVars.METASTORE_EVENT_LISTENERS.varname,
+         DbNotificationListener.class.getName()); // turn on db notification listener on metastore
+-    msPort = MetaStoreUtils.startMetaStore();
++    msPort = MetaStoreUtils.startMetaStoreWithRetry();
+     securityManager = System.getSecurityManager();
+     System.setSecurityManager(new NoExitSecurityManager());
+     hcatConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:"
+@@ -171,7 +171,8 @@ public void testBasicDDLCommands() throws Exception {
+     if (useExternalMS) {
+       assertTrue(testDb.getLocation().matches(".*" + "/" + db + ".db"));
+     } else {
+-      String expectedDir = warehouseDir.replaceFirst("pfile:///", "pfile:/");
++      String expectedDir = warehouseDir.replaceFirst("pfile:///", "pfile:/")
++          + "/" + msPort;
+       assertEquals(expectedDir + "/" + db + ".db", testDb.getLocation());
+     }
+     ArrayList<HCatFieldSchema> cols = new ArrayList<HCatFieldSchema>();
+@@ -791,7 +792,7 @@ private void startReplicationTargetMetaStoreIfRequired() throws Exception {
+       HiveConf conf = new HiveConf();
+       conf.set("javax.jdo.option.ConnectionURL", hcatConf.get("javax.jdo.option.ConnectionURL")
+         .replace("metastore", "target_metastore"));
+-      replicationTargetHCatPort = MetaStoreUtils.startMetaStore(conf);
++      replicationTargetHCatPort = MetaStoreUtils.startMetaStoreWithRetry(conf);
+       replicationTargetHCatConf = new HiveConf(hcatConf);
+       replicationTargetHCatConf.setVar(HiveConf.ConfVars.METASTOREURIS,
+                                        "thrift://localhost:" + replicationTargetHCatPort);
+diff --git a/itests/hive-unit-hadoop2/src/test/java/org/apache/hadoop/hive/thrift/TestHadoopAuthBridge23.java b/itests/hive-unit-hadoop2/src/test/java/org/apache/hadoop/hive/thrift/TestHadoopAuthBridge23.java
+index a4692cb..a7d9b3a 100644
+--- a/itests/hive-unit-hadoop2/src/test/java/org/apache/hadoop/hive/thrift/TestHadoopAuthBridge23.java
++++ b/itests/hive-unit-hadoop2/src/test/java/org/apache/hadoop/hive/thrift/TestHadoopAuthBridge23.java
+@@ -66,6 +66,20 @@
+    */
+   static volatile boolean isMetastoreTokenManagerInited;
+ 
++  public static class MyTokenStore extends MemoryTokenStore {
++    static volatile DelegationTokenStore TOKEN_STORE = null;
++    public void init(Object hmsHandler, HadoopThriftAuthBridge.Server.ServerMode smode) throws TokenStoreException {
++      super.init(hmsHandler, smode);
++      TOKEN_STORE = this;
++      try {
++        Thread.sleep(5000);
++      } catch (InterruptedException e) {
++        e.printStackTrace();
++      }
++      isMetastoreTokenManagerInited = true;
++    }
++  }
++
+   private static class MyHadoopThriftAuthBridge23 extends HadoopThriftAuthBridge23 {
+     @Override
+     public Server createServer(String keytabFile, String principalConf)
+@@ -136,15 +150,12 @@ private void configureSuperUserIPAddresses(Configuration conf,
+ 
+   public void setup() throws Exception {
+     isMetastoreTokenManagerInited = false;
+-    int port = findFreePort();
+     System.setProperty(HiveConf.ConfVars.METASTORE_USE_THRIFT_SASL.varname,
+         "true");
+-    System.setProperty(HiveConf.ConfVars.METASTOREURIS.varname,
+-        "thrift://localhost:" + port);
+-    System.setProperty(HiveConf.ConfVars.METASTOREWAREHOUSE.varname, new Path(
+-        System.getProperty("test.build.data", "/tmp")).toString());
++    System.setProperty(HiveConf.ConfVars.METASTORE_CLUSTER_DELEGATION_TOKEN_STORE_CLS.varname,
++        MyTokenStore.class.getName());
+     conf = new HiveConf(TestHadoopAuthBridge23.class);
+-    MetaStoreUtils.startMetaStore(port, new MyHadoopThriftAuthBridge23());
++    MetaStoreUtils.startMetaStoreWithRetry(new MyHadoopThriftAuthBridge23(), conf);
+   }
+ 
+   /**
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/AbstractTestAuthorizationApiAuthorizer.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/AbstractTestAuthorizationApiAuthorizer.java
+index f79372d..af5d525 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/AbstractTestAuthorizationApiAuthorizer.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/AbstractTestAuthorizationApiAuthorizer.java
+@@ -33,7 +33,6 @@
+ import org.apache.hadoop.hive.metastore.api.Role;
+ import org.apache.hadoop.hive.ql.security.authorization.MetaStoreAuthzAPIAuthorizerEmbedOnly;
+ import org.apache.hadoop.hive.ql.security.authorization.AuthorizationPreEventListener;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+ import org.junit.Test;
+ 
+ /**
+@@ -57,9 +56,7 @@ protected static void setup() throws Exception {
+ 
+     hiveConf = new HiveConf();
+     if (isRemoteMetastoreMode) {
+-      int port = MetaStoreUtils.findFreePort();
+-      MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
+-      hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + port);
++      MetaStoreUtils.startMetaStoreWithRetry(hiveConf);
+     }
+     hiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
+     hiveConf.set(HiveConf.ConfVars.PREEXECHOOKS.varname, "");
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestFilterHooks.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestFilterHooks.java
+index cceac93..fa6ec71 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestFilterHooks.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestFilterHooks.java
+@@ -22,9 +22,6 @@
+ import java.util.ArrayList;
+ import java.util.List;
+ 
+-import org.apache.hadoop.fs.FileSystem;
+-import org.apache.hadoop.fs.Path;
+-import org.apache.hadoop.fs.permission.FsPermission;
+ import org.apache.hadoop.hive.cli.CliSessionState;
+ import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+@@ -36,7 +33,6 @@
+ import org.apache.hadoop.hive.metastore.api.Table;
+ import org.apache.hadoop.hive.ql.Driver;
+ import org.apache.hadoop.hive.ql.session.SessionState;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+ import org.junit.After;
+ import org.junit.Before;
+ import org.junit.Test;
+@@ -164,16 +160,15 @@ public Index filterIndex(Index index) throws NoSuchObjectException {
+   @Before
+   public void setUp() throws Exception {
+     DummyMetaStoreFilterHookImpl.blockResults = false;
+-    int port = MetaStoreUtils.findFreePort();
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
+ 
+     hiveConf = new HiveConf(this.getClass());
+-    hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + port);
+     hiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
+     hiveConf.set(HiveConf.ConfVars.PREEXECHOOKS.varname, "");
+     hiveConf.set(HiveConf.ConfVars.POSTEXECHOOKS.varname, "");
+     hiveConf.set(HiveConf.ConfVars.HIVE_SUPPORT_CONCURRENCY.varname, "false");
+     hiveConf.setVar(ConfVars.METASTORE_FILTER_HOOK, DummyMetaStoreFilterHookImpl.class.getName());
++    MetaStoreUtils.startMetaStoreWithRetry(hiveConf);
++
+     SessionState.start(new CliSessionState(hiveConf));
+     msc = new HiveMetaStoreClient(hiveConf, null);
+     driver = new Driver(hiveConf);
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestHiveMetaStoreWithEnvironmentContext.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestHiveMetaStoreWithEnvironmentContext.java
+index c0f0d26..d0c36d8 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestHiveMetaStoreWithEnvironmentContext.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestHiveMetaStoreWithEnvironmentContext.java
+@@ -47,7 +47,6 @@
+ import org.apache.hadoop.hive.ql.session.SessionState;
+ import org.apache.hadoop.hive.serde.serdeConstants;
+ import org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+ import org.mortbay.log.Log;
+ 
+ /**
+@@ -74,12 +73,10 @@ protected void setUp() throws Exception {
+     System.setProperty("hive.metastore.event.listeners",
+         DummyListener.class.getName());
+ 
+-    int port = MetaStoreUtils.findFreePort();
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
+-
+     hiveConf = new HiveConf(this.getClass());
+-    hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + port);
+     hiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
++    MetaStoreUtils.startMetaStoreWithRetry(hiveConf);
++
+     hiveConf.set(HiveConf.ConfVars.PREEXECHOOKS.varname, "");
+     hiveConf.set(HiveConf.ConfVars.POSTEXECHOOKS.varname, "");
+     hiveConf.set(HiveConf.ConfVars.HIVE_SUPPORT_CONCURRENCY.varname, "false");
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMarkPartitionRemote.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMarkPartitionRemote.java
+index 239bad0..de674ca 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMarkPartitionRemote.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMarkPartitionRemote.java
+@@ -25,7 +25,7 @@
+   @Override
+   protected void setUp() throws Exception {
+     super.setUp();
+-    hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + MetaStoreUtils.startMetaStore());
++    MetaStoreUtils.startMetaStoreWithRetry(hiveConf);
+     hiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
+   }
+ }
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreAuthorization.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreAuthorization.java
+index bfee539..51c4b5a 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreAuthorization.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreAuthorization.java
+@@ -18,8 +18,6 @@
+ 
+ package org.apache.hadoop.hive.metastore;
+ 
+-import java.io.IOException;
+-import java.net.ServerSocket;
+ import java.util.concurrent.TimeUnit;
+ 
+ import junit.framework.TestCase;
+@@ -32,8 +30,6 @@
+ import org.apache.hadoop.hive.metastore.api.Database;
+ import org.apache.hadoop.hive.metastore.api.MetaException;
+ import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+-
+ 
+ public class TestMetaStoreAuthorization extends TestCase {
+   protected HiveConf conf = new HiveConf();
+@@ -41,17 +37,13 @@
+   private int port;
+ 
+   public void setup() throws Exception {
+-    port = findFreePort();
+-    System.setProperty(HiveConf.ConfVars.METASTORE_AUTHORIZATION_STORAGE_AUTH_CHECKS.varname,
+-        "true");
+-    conf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + port);
++    conf.setBoolVar(HiveConf.ConfVars.METASTORE_AUTHORIZATION_STORAGE_AUTH_CHECKS, true);
+     conf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
+     conf.setTimeVar(ConfVars.METASTORE_CLIENT_CONNECT_RETRY_DELAY, 60, TimeUnit.SECONDS);
+   }
+ 
+   public void testIsWritable() throws Exception {
+     setup();
+-    conf = new HiveConf(this.getClass());
+     String testDir = System.getProperty("test.warehouse.dir", "/tmp");
+     Path testDirPath = new Path(testDir);
+     FileSystem fs = testDirPath.getFileSystem(conf);
+@@ -75,7 +67,7 @@ public void testIsWritable() throws Exception {
+ 
+   public void testMetaStoreAuthorization() throws Exception {
+     setup();
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
++    MetaStoreUtils.startMetaStoreWithRetry(conf);
+     HiveMetaStoreClient client = new HiveMetaStoreClient(conf);
+ 
+     FileSystem fs = null;
+@@ -116,11 +108,4 @@ public void testMetaStoreAuthorization() throws Exception {
+       }
+     }
+   }
+-
+-  private int findFreePort() throws IOException {
+-    ServerSocket socket= new ServerSocket(0);
+-    int port = socket.getLocalPort();
+-    socket.close();
+-    return port;
+-  }
+ }
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreEndFunctionListener.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreEndFunctionListener.java
+index e2c860c..a97747a 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreEndFunctionListener.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreEndFunctionListener.java
+@@ -27,7 +27,6 @@
+ import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
+ import org.apache.hadoop.hive.ql.Driver;
+ import org.apache.hadoop.hive.ql.session.SessionState;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+ /**
+  * TestMetaStoreEventListener. Test case for
+  * {@link org.apache.hadoop.hive.metastore.MetaStoreEndFunctionListener}
+@@ -47,10 +46,8 @@ protected void setUp() throws Exception {
+         DummyPreListener.class.getName());
+     System.setProperty("hive.metastore.end.function.listeners",
+         DummyEndFunctionListener.class.getName());
+-    int port = MetaStoreUtils.findFreePort();
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
+     hiveConf = new HiveConf(this.getClass());
+-    hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + port);
++    MetaStoreUtils.startMetaStoreWithRetry(hiveConf);
+     hiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
+     hiveConf.set(HiveConf.ConfVars.PREEXECHOOKS.varname, "");
+     hiveConf.set(HiveConf.ConfVars.POSTEXECHOOKS.varname, "");
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreEventListener.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreEventListener.java
+index 81a93b2..9a58bfe 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreEventListener.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreEventListener.java
+@@ -62,7 +62,6 @@
+ import org.apache.hadoop.hive.ql.Driver;
+ import org.apache.hadoop.hive.ql.processors.SetProcessor;
+ import org.apache.hadoop.hive.ql.session.SessionState;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+ 
+ /**
+  * TestMetaStoreEventListener. Test case for
+@@ -88,11 +87,8 @@ protected void setUp() throws Exception {
+     System.setProperty("hive.metastore.pre.event.listeners",
+         DummyPreListener.class.getName());
+ 
+-    int port = MetaStoreUtils.findFreePort();
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
+-
+     hiveConf = new HiveConf(this.getClass());
+-    hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + port);
++    MetaStoreUtils.startMetaStoreWithRetry(hiveConf);
+     hiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
+     hiveConf.set(HiveConf.ConfVars.PREEXECHOOKS.varname, "");
+     hiveConf.set(HiveConf.ConfVars.POSTEXECHOOKS.varname, "");
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreEventListenerOnlyOnCommit.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreEventListenerOnlyOnCommit.java
+index 6a14982..534ff8a 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreEventListenerOnlyOnCommit.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreEventListenerOnlyOnCommit.java
+@@ -27,7 +27,6 @@
+ import org.apache.hadoop.hive.metastore.events.ListenerEvent;
+ import org.apache.hadoop.hive.ql.Driver;
+ import org.apache.hadoop.hive.ql.session.SessionState;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+ 
+ /**
+  * Ensure that the status of MetaStore events depend on the RawStore's commit status.
+@@ -50,11 +49,8 @@ protected void setUp() throws Exception {
+     System.setProperty(HiveConf.ConfVars.METASTORE_RAW_STORE_IMPL.varname,
+             DummyRawStoreControlledCommit.class.getName());
+ 
+-    int port = MetaStoreUtils.findFreePort();
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
+-
+     hiveConf = new HiveConf(this.getClass());
+-    hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + port);
++    MetaStoreUtils.startMetaStoreWithRetry(hiveConf);
+     hiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
+     hiveConf.set(HiveConf.ConfVars.PREEXECHOOKS.varname, "");
+     hiveConf.set(HiveConf.ConfVars.POSTEXECHOOKS.varname, "");
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreInitListener.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreInitListener.java
+index 42232fd..c08697e 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreInitListener.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreInitListener.java
+@@ -22,10 +22,8 @@
+ 
+ import org.apache.hadoop.hive.cli.CliSessionState;
+ import org.apache.hadoop.hive.conf.HiveConf;
+-import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
+ import org.apache.hadoop.hive.ql.Driver;
+ import org.apache.hadoop.hive.ql.session.SessionState;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+ 
+ /**
+  * TestMetaStoreInitListener. Test case for
+@@ -42,10 +40,8 @@ protected void setUp() throws Exception {
+     super.setUp();
+     System.setProperty("hive.metastore.init.hooks",
+         DummyMetaStoreInitListener.class.getName());
+-    int port = MetaStoreUtils.findFreePort();
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
+     hiveConf = new HiveConf(this.getClass());
+-    hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + port);
++    MetaStoreUtils.startMetaStoreWithRetry(hiveConf);
+     hiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
+     hiveConf.set(HiveConf.ConfVars.PREEXECHOOKS.varname, "");
+     hiveConf.set(HiveConf.ConfVars.POSTEXECHOOKS.varname, "");
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreMetrics.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreMetrics.java
+index 98e2f03..4181ea7 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreMetrics.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestMetaStoreMetrics.java
+@@ -25,7 +25,6 @@
+ import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.ql.Driver;
+ import org.apache.hadoop.hive.ql.session.SessionState;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+ import org.junit.BeforeClass;
+ import org.junit.Test;
+ 
+@@ -55,7 +54,7 @@ public static void before() throws Exception {
+     metrics = (CodahaleMetrics) MetricsFactory.getInstance();
+ 
+     //Increments one HMS connection
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge(), hiveConf);
++    MetaStoreUtils.startMetaStoreWithRetry(hiveConf);
+ 
+     //Increments one HMS connection (Hive.get())
+     SessionState.start(new CliSessionState(hiveConf));
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestPartitionNameWhitelistValidation.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestPartitionNameWhitelistValidation.java
+index 61d08cd..c666b64 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestPartitionNameWhitelistValidation.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestPartitionNameWhitelistValidation.java
+@@ -28,7 +28,6 @@
+ import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.ql.Driver;
+ import org.apache.hadoop.hive.ql.session.SessionState;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+ import org.junit.Test;
+ 
+ // Validate the metastore client call validatePartitionNameCharacters to ensure it throws
+@@ -47,10 +46,8 @@ protected void setUp() throws Exception {
+     super.setUp();
+     System.setProperty(HiveConf.ConfVars.METASTORE_PARTITION_NAME_WHITELIST_PATTERN.varname,
+         partitionValidationPattern);
+-    int port = MetaStoreUtils.findFreePort();
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
++    MetaStoreUtils.startMetaStoreWithRetry();
+     hiveConf = new HiveConf(this.getClass());
+-    hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + port);
+     hiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
+     SessionState.start(new CliSessionState(hiveConf));
+     msc = new HiveMetaStoreClient(hiveConf, null);
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestRemoteHiveMetaStore.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestRemoteHiveMetaStore.java
+index 878f913..9aa8bcb 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestRemoteHiveMetaStore.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestRemoteHiveMetaStore.java
+@@ -20,7 +20,6 @@
+ 
+ import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+ 
+ 
+ public class TestRemoteHiveMetaStore extends TestHiveMetaStore {
+@@ -42,9 +41,7 @@ protected void setUp() throws Exception {
+       return;
+     }
+ 
+-    port = MetaStoreUtils.findFreePort();
+-    System.out.println("Starting MetaStore Server on port " + port);
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge(), hiveConf);
++    port = MetaStoreUtils.startMetaStoreWithRetry(hiveConf);
+     isServerStarted = true;
+ 
+     // This is default case with setugi off for both client and server
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestRemoteHiveMetaStoreIpAddress.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestRemoteHiveMetaStoreIpAddress.java
+index 63eea27..825d2c2 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestRemoteHiveMetaStoreIpAddress.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestRemoteHiveMetaStoreIpAddress.java
+@@ -23,7 +23,6 @@
+ import org.apache.hadoop.hive.conf.HiveConf;
+ import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+ import org.apache.hadoop.hive.metastore.api.Database;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+ import org.apache.hadoop.util.StringUtils;
+ 
+ /**
+@@ -48,15 +47,12 @@ protected void setUp() throws Exception {
+       return;
+     }
+ 
+-    int port = MetaStoreUtils.findFreePort();
+-    System.out.println("Starting MetaStore Server on port " + port);
+     System.setProperty(ConfVars.METASTORE_EVENT_LISTENERS.varname,
+         IpAddressListener.class.getName());
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
++    MetaStoreUtils.startMetaStoreWithRetry(hiveConf);
+     isServerStarted = true;
+ 
+-    // This is default case with setugi off for both client and server
+-    createClient(port);
++    msc = new HiveMetaStoreClient(hiveConf);
+   }
+ 
+   public void testIpAddress() throws Exception {
+@@ -72,9 +68,4 @@ public void testIpAddress() throws Exception {
+       throw e;
+     }
+   }
+-
+-  protected void createClient(int port) throws Exception {
+-    hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + port);
+-    msc = new HiveMetaStoreClient(hiveConf);
+-  }
+ }
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestRetryingHMSHandler.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestRetryingHMSHandler.java
+index e51ced7..910bab9 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestRetryingHMSHandler.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/metastore/TestRetryingHMSHandler.java
+@@ -37,7 +37,6 @@
+ import org.apache.hadoop.hive.ql.io.HiveOutputFormat;
+ import org.apache.hadoop.hive.serde.serdeConstants;
+ import org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+ 
+ /**
+  * TestRetryingHMSHandler. Test case for
+@@ -53,10 +52,8 @@ protected void setUp() throws Exception {
+     super.setUp();
+     System.setProperty("hive.metastore.pre.event.listeners",
+         AlternateFailurePreListener.class.getName());
+-    int port = MetaStoreUtils.findFreePort();
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
+     hiveConf = new HiveConf(this.getClass());
+-    hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + port);
++    MetaStoreUtils.startMetaStoreWithRetry(hiveConf);
+     hiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
+     hiveConf.setIntVar(HiveConf.ConfVars.HMSHANDLERATTEMPTS, 2);
+     hiveConf.setTimeVar(HiveConf.ConfVars.HMSHANDLERINTERVAL, 0, TimeUnit.MILLISECONDS);
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/TestDDLWithRemoteMetastoreSecondNamenode.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/TestDDLWithRemoteMetastoreSecondNamenode.java
+index 7ed6436..a9607f2 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/TestDDLWithRemoteMetastoreSecondNamenode.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/TestDDLWithRemoteMetastoreSecondNamenode.java
+@@ -78,8 +78,7 @@ protected void setUp() throws Exception {
+       SessionState.start(conf);
+ 
+       // Test with remote metastore service
+-      int port = MetaStoreUtils.findFreePort();
+-      MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
++      int port = MetaStoreUtils.startMetaStoreWithRetry();
+       conf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + port);
+       conf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
+       conf.set(HiveConf.ConfVars.HIVE_SUPPORT_CONCURRENCY.varname, "false");
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/FolderPermissionBase.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/FolderPermissionBase.java
+index d7149a7..9efc68b 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/FolderPermissionBase.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/FolderPermissionBase.java
+@@ -97,8 +97,7 @@ public static void baseSetup() throws Exception {
+     conf.setBoolVar(HiveConf.ConfVars.HIVE_SUPPORT_CONCURRENCY, false);
+     conf.setBoolVar(HiveConf.ConfVars.HIVE_WAREHOUSE_SUBDIR_INHERIT_PERMS, true);
+     conf.setVar(HiveConf.ConfVars.DYNAMICPARTITIONINGMODE, "nonstrict");
+-    int port = MetaStoreUtils.findFreePort();
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
++    MetaStoreUtils.startMetaStoreWithRetry();
+ 
+     SessionState.start(new CliSessionState(conf));
+     driver = new Driver(conf);
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/StorageBasedMetastoreTestBase.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/StorageBasedMetastoreTestBase.java
+index 157ce62..ea567a3 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/StorageBasedMetastoreTestBase.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/StorageBasedMetastoreTestBase.java
+@@ -35,7 +35,6 @@
+ import org.apache.hadoop.hive.ql.security.authorization.StorageBasedAuthorizationProvider;
+ import org.apache.hadoop.hive.ql.session.SessionState;
+ import org.apache.hadoop.hive.ql.WindowsPathUtil;
+-import org.apache.hadoop.hive.shims.ShimLoader;
+ import org.apache.hadoop.hive.shims.Utils;
+ import org.apache.hadoop.security.UserGroupInformation;
+ import org.apache.hadoop.util.Shell;
+@@ -79,12 +78,11 @@ public void setUp() throws Exception {
+         InjectableDummyAuthenticator.class.getName());
+ 
+     clientHiveConf = createHiveConf();
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge(), clientHiveConf);
++    MetaStoreUtils.startMetaStoreWithRetry(clientHiveConf);
+ 
+     // Turn off client-side authorization
+     clientHiveConf.setBoolVar(HiveConf.ConfVars.HIVE_AUTHORIZATION_ENABLED,false);
+ 
+-    clientHiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + port);
+     clientHiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
+     clientHiveConf.set(HiveConf.ConfVars.HIVE_SUPPORT_CONCURRENCY.varname, "false");
+ 
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestAuthorizationPreEventListener.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestAuthorizationPreEventListener.java
+index b8f5dd1..bc55e7f 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestAuthorizationPreEventListener.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestAuthorizationPreEventListener.java
+@@ -53,8 +53,6 @@ protected void setUp() throws Exception {
+ 
+     super.setUp();
+ 
+-    int port = MetaStoreUtils.findFreePort();
+-
+     System.setProperty(HiveConf.ConfVars.METASTORE_PRE_EVENT_LISTENERS.varname,
+         AuthorizationPreEventListener.class.getName());
+     System.setProperty(HiveConf.ConfVars.HIVE_METASTORE_AUTHORIZATION_MANAGER.varname,
+@@ -62,7 +60,7 @@ protected void setUp() throws Exception {
+     System.setProperty(HiveConf.ConfVars.HIVE_METASTORE_AUTHENTICATOR_MANAGER.varname,
+         HadoopDefaultMetastoreAuthenticator.class.getName());
+ 
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
++    int port = MetaStoreUtils.startMetaStoreWithRetry();
+ 
+     clientHiveConf = new HiveConf(this.getClass());
+ 
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestClientSideAuthorizationProvider.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestClientSideAuthorizationProvider.java
+index 9040b1c..950cb40 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestClientSideAuthorizationProvider.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestClientSideAuthorizationProvider.java
+@@ -58,13 +58,11 @@ protected void setUp() throws Exception {
+ 
+     super.setUp();
+ 
+-    int port = MetaStoreUtils.findFreePort();
+-
+     // Turn off metastore-side authorization
+     System.setProperty(HiveConf.ConfVars.METASTORE_PRE_EVENT_LISTENERS.varname,
+         "");
+ 
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
++    int port = MetaStoreUtils.startMetaStoreWithRetry();
+ 
+     clientHiveConf = new HiveConf(this.getClass());
+ 
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestMetastoreAuthorizationProvider.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestMetastoreAuthorizationProvider.java
+index 4529ce3..376792f 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestMetastoreAuthorizationProvider.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestMetastoreAuthorizationProvider.java
+@@ -83,8 +83,6 @@ protected void setUp() throws Exception {
+ 
+     super.setUp();
+ 
+-    int port = MetaStoreUtils.findFreePort();
+-
+     // Turn on metastore-side authorization
+     System.setProperty(HiveConf.ConfVars.METASTORE_PRE_EVENT_LISTENERS.varname,
+         AuthorizationPreEventListener.class.getName());
+@@ -96,7 +94,7 @@ protected void setUp() throws Exception {
+     System.setProperty(HiveConf.ConfVars.HIVE_AUTHORIZATION_TABLE_OWNER_GRANTS.varname, "");
+ 
+ 
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
++    int port = MetaStoreUtils.startMetaStoreWithRetry();
+ 
+     clientHiveConf = createHiveConf();
+ 
+diff --git a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestMultiAuthorizationPreEventListener.java b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestMultiAuthorizationPreEventListener.java
+index 299812f..c064f58 100644
+--- a/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestMultiAuthorizationPreEventListener.java
++++ b/itests/hive-unit/src/test/java/org/apache/hadoop/hive/ql/security/TestMultiAuthorizationPreEventListener.java
+@@ -49,8 +49,6 @@
+   public static void setUp() throws Exception {
+ 
+ 
+-    int port = MetaStoreUtils.findFreePort();
+-
+     System.setProperty(HiveConf.ConfVars.METASTORE_PRE_EVENT_LISTENERS.varname,
+         AuthorizationPreEventListener.class.getName());
+ 
+@@ -62,7 +60,7 @@ public static void setUp() throws Exception {
+     System.setProperty(HiveConf.ConfVars.HIVE_METASTORE_AUTHENTICATOR_MANAGER.varname,
+         HadoopDefaultMetastoreAuthenticator.class.getName());
+ 
+-    MetaStoreUtils.startMetaStore(port, ShimLoader.getHadoopThriftAuthBridge());
++    int port = MetaStoreUtils.startMetaStoreWithRetry();
+ 
+     clientHiveConf = new HiveConf();
+ 
+diff --git a/itests/util/src/main/java/org/apache/hive/jdbc/miniHS2/MiniHS2.java b/itests/util/src/main/java/org/apache/hive/jdbc/miniHS2/MiniHS2.java
+index 5d8e8a0..59f3508 100644
+--- a/itests/util/src/main/java/org/apache/hive/jdbc/miniHS2/MiniHS2.java
++++ b/itests/util/src/main/java/org/apache/hive/jdbc/miniHS2/MiniHS2.java
+@@ -274,10 +274,7 @@ public MiniHS2(HiveConf hiveConf, boolean useMiniMR) throws Exception {
+ 
+   public void start(Map<String, String> confOverlay) throws Exception {
+     if (isMetastoreRemote) {
+-      int metaStorePort = MetaStoreUtils.findFreePort();
+-      getHiveConf().setVar(ConfVars.METASTOREURIS, "thrift://localhost:" + metaStorePort);
+-      MetaStoreUtils.startMetaStore(metaStorePort,
+-      ShimLoader.getHadoopThriftAuthBridge(), getHiveConf());
++      MetaStoreUtils.startMetaStoreWithRetry(getHiveConf());
+     }
+ 
+     hiveServer2 = new HiveServer2();
+diff --git a/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreUtils.java b/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreUtils.java
+index 6fd244d..54ef191 100644
+--- a/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreUtils.java
++++ b/metastore/src/java/org/apache/hadoop/hive/metastore/MetaStoreUtils.java
+@@ -89,6 +89,7 @@
+ 
+   protected static final Log LOG = LogFactory.getLog("hive.log");
+ 
++  public static final int RETRY_COUNT = 10;
+   public static final String DEFAULT_DATABASE_NAME = "default";
+   public static final String DEFAULT_DATABASE_COMMENT = "Default Hive database";
+   public static final String DEFAULT_SERIALIZATION_FORMAT = "1";
+@@ -1134,25 +1135,51 @@ public static void makeDir(Path path, HiveConf hiveConf) throws MetaException {
+     }
+   }
+ 
+-  public static int startMetaStore() throws Exception {
+-    return startMetaStore(ShimLoader.getHadoopThriftAuthBridge(), null);
++  public static int startMetaStoreWithRetry(final HadoopThriftAuthBridge bridge) throws Exception {
++    return startMetaStoreWithRetry(bridge, null);
+   }
+ 
+-  public static int startMetaStore(final HadoopThriftAuthBridge bridge, HiveConf conf) throws Exception {
+-    int port = findFreePort();
+-    startMetaStore(port, bridge, conf);
+-    return port;
++  public static int startMetaStoreWithRetry(HiveConf conf) throws Exception {
++    return startMetaStoreWithRetry(ShimLoader.getHadoopThriftAuthBridge(), conf);
+   }
+ 
+-  public static int startMetaStore(HiveConf conf) throws Exception {
+-    return startMetaStore(ShimLoader.getHadoopThriftAuthBridge(), conf);
++  public static int startMetaStoreWithRetry() throws Exception {
++    return startMetaStoreWithRetry(ShimLoader.getHadoopThriftAuthBridge(), new HiveConf());
++  }
++
++  public static int startMetaStoreWithRetry(final HadoopThriftAuthBridge bridge, HiveConf conf)
++      throws Exception {
++    Exception metaStoreException = null;
++    int metaStorePort = 0;
++    String warehouseDir = HiveConf.getVar(conf, HiveConf.ConfVars.METASTOREWAREHOUSE);
++
++    for (int tryCount = 0; tryCount < MetaStoreUtils.RETRY_COUNT; tryCount++) {
++      try {
++        metaStorePort = findFreePort();
++        Path postfixedWarehouseDir = new Path(warehouseDir, String.valueOf(metaStorePort));
++        HiveConf.setVar(conf, HiveConf.ConfVars.METASTOREWAREHOUSE,
++            postfixedWarehouseDir.toString());
++        HiveConf.setVar(conf, HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + metaStorePort);
++        startMetaStore(metaStorePort, bridge, conf);
++        LOG.error("MetaStore Thrift Server started on port: " + metaStorePort
++            + " with warehouse dir: " + postfixedWarehouseDir);
++        return metaStorePort;
++      } catch (Exception ce) {
++        metaStoreException = ce;
++      }
++    }
++
++    throw metaStoreException;
+   }
+ 
+-  public static void startMetaStore(final int port, final HadoopThriftAuthBridge bridge) throws Exception {
+-    startMetaStore(port, bridge, null);
++  @Deprecated
++  // Kept only for backward compatibilty in kudu
++  // org.apache.kudu.hive.metastore.TestKuduMetastorePlugin.java
++  public static int startMetaStore(HiveConf conf) throws Exception {
++    return startMetaStoreWithRetry(conf);
+   }
+ 
+-  public static void startMetaStore(final int port,
++  private static void startMetaStore(final int port,
+       final HadoopThriftAuthBridge bridge, HiveConf hiveConf)
+       throws Exception{
+     if (hiveConf == null) {
+diff --git a/metastore/src/test/org/apache/hadoop/hive/metastore/TestHiveMetaStoreGetMetaConf.java b/metastore/src/test/org/apache/hadoop/hive/metastore/TestHiveMetaStoreGetMetaConf.java
+index da883d2..5761690 100644
+--- a/metastore/src/test/org/apache/hadoop/hive/metastore/TestHiveMetaStoreGetMetaConf.java
++++ b/metastore/src/test/org/apache/hadoop/hive/metastore/TestHiveMetaStoreGetMetaConf.java
+@@ -79,7 +79,7 @@ public static void startMetaStoreServer() throws Exception {
+     metastoreConf.setClass(HiveConf.ConfVars.METASTORE_EXPRESSION_PROXY_CLASS.varname,
+       MockPartitionExpressionForMetastore.class, PartitionExpressionProxy.class);
+     metastoreConf.setBoolVar(HiveConf.ConfVars.METASTORE_TRY_DIRECT_SQL_DDL, false);
+-    int msPort = MetaStoreUtils.startMetaStore(metastoreConf);
++    int msPort = MetaStoreUtils.startMetaStoreWithRetry(metastoreConf);
+     hiveConf = new HiveConf(TestHiveMetaStoreGetMetaConf.class);
+     hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:"
+         + msPort);
+diff --git a/metastore/src/test/org/apache/hadoop/hive/metastore/TestHiveMetaStorePartitionSpecs.java b/metastore/src/test/org/apache/hadoop/hive/metastore/TestHiveMetaStorePartitionSpecs.java
+index c1646c3..94fad74 100644
+--- a/metastore/src/test/org/apache/hadoop/hive/metastore/TestHiveMetaStorePartitionSpecs.java
++++ b/metastore/src/test/org/apache/hadoop/hive/metastore/TestHiveMetaStorePartitionSpecs.java
+@@ -86,9 +86,9 @@ public static void startMetaStoreServer() throws Exception {
+     HiveConf metastoreConf = new HiveConf();
+     metastoreConf.setClass(HiveConf.ConfVars.METASTORE_EXPRESSION_PROXY_CLASS.varname,
+       MockPartitionExpressionForMetastore.class, PartitionExpressionProxy.class);
+-    msPort = MetaStoreUtils.startMetaStore(metastoreConf);
+     securityManager = System.getSecurityManager();
+     System.setSecurityManager(new NoExitSecurityManager());
++    msPort = MetaStoreUtils.startMetaStoreWithRetry(metastoreConf);
+     hiveConf = new HiveConf(TestHiveMetaStorePartitionSpecs.class);
+     hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:"
+         + msPort);
+diff --git a/ql/src/test/org/apache/hadoop/hive/ql/metadata/TestHiveRemote.java b/ql/src/test/org/apache/hadoop/hive/ql/metadata/TestHiveRemote.java
+index 9dfcd54..ad333be 100644
+--- a/ql/src/test/org/apache/hadoop/hive/ql/metadata/TestHiveRemote.java
++++ b/ql/src/test/org/apache/hadoop/hive/ql/metadata/TestHiveRemote.java
+@@ -40,7 +40,10 @@
+   protected void setUp() throws Exception {
+     super.setUp();
+     hiveConf = new HiveConf(this.getClass());
+-    hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, "thrift://localhost:" + MetaStoreUtils.startMetaStore());
++    hiveConf
++        .setVar(HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER,
++            "org.apache.hadoop.hive.ql.security.authorization.plugin.sqlstd.SQLStdHiveAuthorizerFactory");
++    MetaStoreUtils.startMetaStoreWithRetry(hiveConf);
+ 
+     try {
+       hm = Hive.get(hiveConf);
+-- 
+1.7.9.5
+

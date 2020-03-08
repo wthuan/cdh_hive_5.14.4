@@ -1,0 +1,72 @@
+From 52953faffb83d989845341ad0d721487851b4ffa Mon Sep 17 00:00:00 2001
+From: stakiar <stakiar@cloudera.com>
+Date: Sun, 30 Jul 2017 22:20:39 -0700
+Subject: [PATCH 1221/1363] CLOUDERA-BUILD: CDH-55703: Updating
+ vector_cast_constant.q.out to contain 0-padded
+ output
+
+Change-Id: I1e52b01d21092b30512ff6f155f97f53fe41dabf
+---
+ .../spark/vector_cast_constant.q.out               |   20 ++++++++++----------
+ .../clientpositive/vector_cast_constant.q.out      |   20 ++++++++++----------
+ 2 files changed, 20 insertions(+), 20 deletions(-)
+
+diff --git a/ql/src/test/results/clientpositive/spark/vector_cast_constant.q.out b/ql/src/test/results/clientpositive/spark/vector_cast_constant.q.out
+index 0b6a1d1..50b95c7 100644
+--- a/ql/src/test/results/clientpositive/spark/vector_cast_constant.q.out
++++ b/ql/src/test/results/clientpositive/spark/vector_cast_constant.q.out
+@@ -198,13 +198,13 @@ POSTHOOK: query: SELECT
+ POSTHOOK: type: QUERY
+ POSTHOOK: Input: default@over1korc
+ #### A masked pattern was here ####
+-65536	50.0	50.0	50
+-65537	50.0	50.0	50
+-65538	50.0	50.0	50
+-65539	50.0	50.0	50
+-65540	50.0	50.0	50
+-65541	50.0	50.0	50
+-65542	50.0	50.0	50
+-65543	50.0	50.0	50
+-65544	50.0	50.0	50
+-65545	50.0	50.0	50
++65536	50.0	50.0	50.0000
++65537	50.0	50.0	50.0000
++65538	50.0	50.0	50.0000
++65539	50.0	50.0	50.0000
++65540	50.0	50.0	50.0000
++65541	50.0	50.0	50.0000
++65542	50.0	50.0	50.0000
++65543	50.0	50.0	50.0000
++65544	50.0	50.0	50.0000
++65545	50.0	50.0	50.0000
+diff --git a/ql/src/test/results/clientpositive/vector_cast_constant.q.out b/ql/src/test/results/clientpositive/vector_cast_constant.q.out
+index 7446abc..028e725 100644
+--- a/ql/src/test/results/clientpositive/vector_cast_constant.q.out
++++ b/ql/src/test/results/clientpositive/vector_cast_constant.q.out
+@@ -201,13 +201,13 @@ POSTHOOK: query: SELECT
+ POSTHOOK: type: QUERY
+ POSTHOOK: Input: default@over1korc
+ #### A masked pattern was here ####
+-65536	50.0	50.0	50
+-65537	50.0	50.0	50
+-65538	50.0	50.0	50
+-65539	50.0	50.0	50
+-65540	50.0	50.0	50
+-65541	50.0	50.0	50
+-65542	50.0	50.0	50
+-65543	50.0	50.0	50
+-65544	50.0	50.0	50
+-65545	50.0	50.0	50
++65536	50.0	50.0	50.0000
++65537	50.0	50.0	50.0000
++65538	50.0	50.0	50.0000
++65539	50.0	50.0	50.0000
++65540	50.0	50.0	50.0000
++65541	50.0	50.0	50.0000
++65542	50.0	50.0	50.0000
++65543	50.0	50.0	50.0000
++65544	50.0	50.0	50.0000
++65545	50.0	50.0	50.0000
+-- 
+1.7.9.5
+

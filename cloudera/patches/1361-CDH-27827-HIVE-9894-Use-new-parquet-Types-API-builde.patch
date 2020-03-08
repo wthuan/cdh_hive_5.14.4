@@ -1,0 +1,31 @@
+From fafab37414c0cc6a7c89b990def1333f98808dd1 Mon Sep 17 00:00:00 2001
+From: Sun Chao <sunchao@apache.org>
+Date: Tue, 17 Mar 2015 20:21:26 +0000
+Subject: [PATCH 1361/1363] CDH-27827: HIVE-9894 - Use new parquet Types API
+ builder to construct DATE data type (Dong via
+ Chao)
+
+git-svn-id: https://svn.apache.org/repos/asf/hive/trunk@1667390 13f79535-47bb-0310-9956-ffa450edef68
+(cherry picked from commit 9641b4d8310877a97cc9521dd28c730971683f32)
+Change-Id: Id6fb2e238c92dfa5b9a8ec063319eb5e3bba9e6e
+---
+ .../ql/io/parquet/convert/HiveSchemaConverter.java |    3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/convert/HiveSchemaConverter.java b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/convert/HiveSchemaConverter.java
+index 52628ff..3c4e8cc 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/convert/HiveSchemaConverter.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/parquet/convert/HiveSchemaConverter.java
+@@ -101,6 +101,9 @@ private static Type convertType(final String name, final TypeInfo typeInfo,
+         int bytes = ParquetHiveSerDe.PRECISION_TO_BYTE_COUNT[prec - 1];
+         return Types.optional(PrimitiveTypeName.FIXED_LEN_BYTE_ARRAY).length(bytes).as(OriginalType.DECIMAL).
+             scale(scale).precision(prec).named(name);
++      } else if (typeInfo.equals(TypeInfoFactory.dateTypeInfo)) {
++        return Types.primitive(PrimitiveTypeName.INT32, repetition).as(OriginalType.DATE).named
++            (name);
+       } else if (typeInfo.equals(TypeInfoFactory.unknownTypeInfo)) {
+         throw new UnsupportedOperationException("Unknown type not implemented");
+       } else {
+-- 
+1.7.9.5
+

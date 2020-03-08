@@ -1,0 +1,68 @@
+From 00652b2ea9592182d0f8166e4de5c2556241aa6d Mon Sep 17 00:00:00 2001
+From: Ashutosh Chauhan <hashutosh@apache.org>
+Date: Sun, 29 Apr 2018 00:05:22 -0700
+Subject: [PATCH 1356/1363] CDH-66790 HIVE-19313 :
+ TestJdbcWithDBTokenStoreNoDoAs tests are failing
+ (Peter Vary via Ashutosh Chauhan)
+
+Signed-off-by: Ashutosh Chauhan <hashutosh@apache.org>
+(cherry picked from commit 95bdb2b1afd7cb4b7680e70a7f3175b9740f5d06)
+
+Change-Id: Ib0930ccfc37ad10795d7b1f5aa66f83eed86a07b
+(cherry picked from commit 2efaaf5253c5c3331a665ca55a3a49d26cead15d)
+(cherry picked from commit 4d54b20012da4f6ecf871eb970d93fb87f525ed0)
+(cherry picked from commit 9b996fe15cba498f7e0a6663c165d65d9abcae5e)
+---
+ .../hive/minikdc/TestJdbcWithDBTokenStore.java     |   12 ++++++++++++
+ .../minikdc/TestJdbcWithDBTokenStoreNoDoAs.java    |   12 ++++++++++++
+ 2 files changed, 24 insertions(+)
+
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStore.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStore.java
+index c1405fa..1978aa0 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStore.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStore.java
+@@ -47,5 +47,17 @@ public static void beforeTest() throws Exception {
+     String hs2Principal = miniHS2.getConfProperty(ConfVars.HIVE_SERVER2_KERBEROS_PRINCIPAL.varname);
+     String hs2KeyTab = miniHS2.getConfProperty(ConfVars.HIVE_SERVER2_KERBEROS_KEYTAB.varname);
+     System.out.println("HS2 principal : " + hs2Principal + " HS2 keytab : " + hs2KeyTab + " Metastore principal : " + metastorePrincipal);
++    System.setProperty(HiveConf.ConfVars.METASTOREWAREHOUSE.varname,
++        HiveConf.getVar(hiveConf, HiveConf.ConfVars.METASTOREWAREHOUSE));
++    System.setProperty(HiveConf.ConfVars.METASTORECONNECTURLKEY.varname,
++        HiveConf.getVar(hiveConf, HiveConf.ConfVars.METASTORECONNECTURLKEY));
++    // Before this patch, the Embedded MetaStore was used here not the one started by the MiniHS2
++    // The below 3 lines would change the tests to use the Remote MetaStore, but it will cause a
++    // failure. By removing the thrift MetaStore uris, the tests are passing again.
++    // I think this is an valid problem here, but not really sure about the
++    // tests original intention, so keep everything as it was originally.
++//    System.setProperty(HiveConf.ConfVars.METASTOREURIS.varname,
++//        HiveConf.getVar(hiveConf, HiveConf.ConfVars.METASTOREURIS));
++//    Thread.sleep(2000);
+   }
+ }
+\ No newline at end of file
+diff --git a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStoreNoDoAs.java b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStoreNoDoAs.java
+index 3892074..3b3f8b4 100644
+--- a/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStoreNoDoAs.java
++++ b/itests/hive-minikdc/src/test/java/org/apache/hive/minikdc/TestJdbcWithDBTokenStoreNoDoAs.java
+@@ -47,5 +47,17 @@ public static void beforeTest() throws Exception {
+     String hs2Principal = miniHS2.getConfProperty(ConfVars.HIVE_SERVER2_KERBEROS_PRINCIPAL.varname);
+     String hs2KeyTab = miniHS2.getConfProperty(ConfVars.HIVE_SERVER2_KERBEROS_KEYTAB.varname);
+     System.out.println("HS2 principal : " + hs2Principal + " HS2 keytab : " + hs2KeyTab + " Metastore principal : " + metastorePrincipal);
++    System.setProperty(HiveConf.ConfVars.METASTOREWAREHOUSE.varname,
++        HiveConf.getVar(hiveConf, HiveConf.ConfVars.METASTOREWAREHOUSE));
++    System.setProperty(HiveConf.ConfVars.METASTORECONNECTURLKEY.varname,
++        HiveConf.getVar(hiveConf, HiveConf.ConfVars.METASTORECONNECTURLKEY));
++    // Before this patch, the Embedded MetaStore was used here not the one started by the MiniHS2
++    // The below 3 lines would change the tests to use the Remote MetaStore, but it will cause a
++    // failure. By removing the thrift MetaStore uris, the tests are passing again.
++    // I think this is an valid problem here, but not really sure about the
++    // tests original intention, so keep everything as it was originally.
++//    System.setProperty(HiveConf.ConfVars.METASTOREURIS.varname,
++//        HiveConf.getVar(hiveConf, HiveConf.ConfVars.METASTOREURIS));
++    Thread.sleep(2000);
+   }
+ }
+\ No newline at end of file
+-- 
+1.7.9.5
+

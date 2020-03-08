@@ -1,0 +1,48 @@
+From 85802a2ec710eaa0764af286563ac08e14d040f7 Mon Sep 17 00:00:00 2001
+From: Aihua Xu <aihuaxu@apache.org>
+Date: Mon, 24 Jul 2017 16:21:07 -0700
+Subject: [PATCH 1205/1363] CDH-56965: HIVE-17149: Hdfs directory is not
+ cleared if partition creation failed on HMS
+ (Barna Zsombor Klara, reviewed by Aihua Xu)
+
+Change-Id: Ic155bcba185bfa701d889cd202d5e876ef14f403
+---
+ .../org/apache/hadoop/hive/ql/metadata/Hive.java   |   11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/metadata/Hive.java b/ql/src/java/org/apache/hadoop/hive/ql/metadata/Hive.java
+index 2b62ecb..97cbb59 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/metadata/Hive.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/metadata/Hive.java
+@@ -1976,10 +1976,12 @@ public Partition getPartition(Table tbl, Map<String, String> partSpec,
+               if (tpart == null) {
+                 // This means the exception was caused by something other than a race condition
+                 // in creating the partition, since the partition still doesn't exist.
++                cleanPartitionContents(new Path(partPath), tbl);
+                 throw e;
+               }
+               alterPartitionSpec(tbl, partSpec, tpart, inheritTableSpecs, partPath);
+             } else {
++              cleanPartitionContents(new Path(partPath), tbl);
+               throw e;
+             }
+           }
+@@ -1999,6 +2001,15 @@ public Partition getPartition(Table tbl, Map<String, String> partSpec,
+     return new Partition(tbl, tpart);
+   }
+ 
++  private void cleanPartitionContents(Path newPartPath, Table tbl) {
++    try {
++      final FileSystem newPathFileSystem = newPartPath.getFileSystem(this.getConf());
++      FileUtils.moveToTrash(newPathFileSystem, newPartPath, this.getConf());
++    } catch (IOException io) {
++      LOG.error("Could not delete partition directory contents after failed partition creation: ", io);
++    }
++  }
++
+   private void alterPartitionSpec(Table tbl,
+                                   Map<String, String> partSpec,
+                                   org.apache.hadoop.hive.metastore.api.Partition tpart,
+-- 
+1.7.9.5
+

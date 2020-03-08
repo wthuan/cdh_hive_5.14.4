@@ -1,0 +1,225 @@
+From b1bfd82e3df84813f0edb39ebee08232d94cda9a Mon Sep 17 00:00:00 2001
+From: Gunther Hagleitner <gunther@apache.org>
+Date: Tue, 22 Dec 2015 11:35:51 -0800
+Subject: [PATCH 1230/1363] CDH-57666: HIVE-12667: Proper fix for HIVE-12473
+ (DPP: UDFs on the partition column side does not
+ evaluate correctly) (Gunther Hagleitner, reviewed
+ by Vikram Dixit K)
+
+(cherry picked from commit 45ae30c87ad4c4a72fde4afc7b1353024d80e80e)
+
+Conflicts:
+	ql/src/java/org/apache/hadoop/hive/ql/exec/tez/DynamicPartitionPruner.java
+	ql/src/test/org/apache/hadoop/hive/ql/exec/tez/TestDynamicPartitionPruner.java
+
+Change-Id: I811b3ce45b3269ed31f6f7c8cb57e7df25fdd4e5
+---
+ .../hive/ql/exec/tez/DynamicPartitionPruner.java   |   13 ++++++++++---
+ .../org/apache/hadoop/hive/ql/metadata/Table.java  |   10 +++++++---
+ .../DynamicPartitionPruningOptimization.java       |    6 ++++--
+ .../apache/hadoop/hive/ql/parse/GenTezUtils.java   |    6 ++++++
+ .../hive/ql/plan/DynamicPruningEventDesc.java      |   15 +++++++++++++++
+ .../org/apache/hadoop/hive/ql/plan/MapWork.java    |    6 ++++++
+ 6 files changed, 48 insertions(+), 8 deletions(-)
+
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/exec/tez/DynamicPartitionPruner.java b/ql/src/java/org/apache/hadoop/hive/ql/exec/tez/DynamicPartitionPruner.java
+index 696874e..cb2d65a 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/exec/tez/DynamicPartitionPruner.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/exec/tez/DynamicPartitionPruner.java
+@@ -139,15 +139,20 @@ public void initialize(MapWork work, JobConf jobConf) throws SerDeException {
+     for (String s : sources) {
+       List<TableDesc> tables = work.getEventSourceTableDescMap().get(s);
+       List<String> columnNames = work.getEventSourceColumnNameMap().get(s);
++
++      // Column type
++      List<String> columnTypes = work.getEventSourceColumnTypeMap().get(s);
+       List<ExprNodeDesc> partKeyExprs = work.getEventSourcePartKeyExprMap().get(s);
+ 
+       Iterator<String> cit = columnNames.iterator();
++      Iterator<String> typit = columnTypes.iterator();
+       Iterator<ExprNodeDesc> pit = partKeyExprs.iterator();
+       for (TableDesc t : tables) {
+         ++sourceInfoCount;
+         String columnName = cit.next();
++        String columnType = typit.next();
+         ExprNodeDesc partKeyExpr = pit.next();
+-        SourceInfo si = new SourceInfo(t, partKeyExpr, columnName, jobConf);
++        SourceInfo si = new SourceInfo(t, partKeyExpr, columnName, columnType, jobConf);
+         if (!sourceInfoMap.containsKey(s)) {
+           sourceInfoMap.put(s, new ArrayList<SourceInfo>());
+         }
+@@ -209,7 +214,7 @@ private void prunePartitionSingleSource(String source, SourceInfo si, MapWork wo
+ 
+     ObjectInspector oi =
+         PrimitiveObjectInspectorFactory.getPrimitiveWritableObjectInspector(TypeInfoFactory
+-            .getPrimitiveTypeInfo(si.fieldInspector.getTypeName()));
++            .getPrimitiveTypeInfo(si.columnType));
+ 
+     Converter converter =
+         ObjectInspectorConverters.getConverter(
+@@ -277,8 +282,9 @@ private void applyFilterToPartitions(MapWork work, Converter converter, ExprNode
+     public Set<Object> values = new HashSet<Object>();
+     public AtomicBoolean skipPruning = new AtomicBoolean();
+     public final String columnName;
++    public final String columnType;
+ 
+-    public SourceInfo(TableDesc table, ExprNodeDesc partKey, String columnName, JobConf jobConf)
++    public SourceInfo(TableDesc table, ExprNodeDesc partKey, String columnName, String columnType, JobConf jobConf)
+         throws SerDeException {
+ 
+       this.skipPruning.set(false);
+@@ -286,6 +292,7 @@ public SourceInfo(TableDesc table, ExprNodeDesc partKey, String columnName, JobC
+       this.partKey = partKey;
+ 
+       this.columnName = columnName;
++      this.columnType = columnType;
+ 
+       deserializer = ReflectionUtils.newInstance(table.getDeserializerClass(), null);
+       deserializer.initialize(jobConf, table.getProperties());
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/metadata/Table.java b/ql/src/java/org/apache/hadoop/hive/ql/metadata/Table.java
+index f707958..388bd5e 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/metadata/Table.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/metadata/Table.java
+@@ -479,13 +479,17 @@ public boolean equals(Object obj) {
+     return partKeys;
+   }
+ 
+-  public boolean isPartitionKey(String colName) {
++  public FieldSchema getPartColByName(String colName) {
+     for (FieldSchema key : getPartCols()) {
+       if (key.getName().toLowerCase().equals(colName)) {
+-        return true;
++        return key;
+       }
+     }
+-    return false;
++    return null;
++  }
++
++  public boolean isPartitionKey(String colName) {
++    return getPartColByName(colName) == null ? false : true;
+   }
+ 
+   // TODO merge this with getBucketCols function
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/DynamicPartitionPruningOptimization.java b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/DynamicPartitionPruningOptimization.java
+index fdc8c3e..1e9a331 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/optimizer/DynamicPartitionPruningOptimization.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/optimizer/DynamicPartitionPruningOptimization.java
+@@ -200,6 +200,7 @@ public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procCtx, Obje
+         Table table = ts.getConf().getTableMetadata();
+ 
+         if (table != null && table.isPartitionKey(column)) {
++	  String columnType = table.getPartColByName(column).getType();
+           String alias = ts.getConf().getAlias();
+           PrunedPartitionList plist = parseContext.getPrunedPartitions(alias, ts);
+           if (LOG.isDebugEnabled()) {
+@@ -213,7 +214,7 @@ public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procCtx, Obje
+           }
+           if (plist == null || plist.getPartitions().size() != 0) {
+             LOG.info("Dynamic partitioning: " + table.getCompleteName() + "." + column);
+-            generateEventOperatorPlan(ctx, parseContext, ts, column);
++            generateEventOperatorPlan(ctx, parseContext, ts, column, columnType);
+           } else {
+             // all partitions have been statically removed
+             LOG.debug("No partition pruning necessary.");
+@@ -269,7 +270,7 @@ private void cleanTableScanFilters(TableScanOperator ts) throws SemanticExceptio
+   }
+ 
+   private void generateEventOperatorPlan(DynamicListContext ctx, ParseContext parseContext,
+-      TableScanOperator ts, String column) {
++      TableScanOperator ts, String column, String columnType) {
+ 
+     // we will put a fork in the plan at the source of the reduce sink
+     Operator<? extends OperatorDesc> parentOfRS = ctx.generator.getParentOperators().get(0);
+@@ -329,6 +330,7 @@ private void generateEventOperatorPlan(DynamicListContext ctx, ParseContext pars
+       eventDesc.setTable(PlanUtils.getReduceValueTableDesc(PlanUtils
+           .getFieldSchemasFromColumnList(keyExprs, "key")));
+       eventDesc.setTargetColumnName(column);
++      eventDesc.setTargetColumnType(columnType);
+       eventDesc.setPartKey(partKey);
+       OperatorFactory.getAndMakeChild(eventDesc, groupByOp);
+     } else {
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/parse/GenTezUtils.java b/ql/src/java/org/apache/hadoop/hive/ql/parse/GenTezUtils.java
+index 8a50249..34c741f 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/parse/GenTezUtils.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/parse/GenTezUtils.java
+@@ -423,6 +423,12 @@ public void processAppMasterEvent(GenTezProcContext procCtx, AppMasterEventOpera
+     List<String> columns = work.getEventSourceColumnNameMap().get(sourceName);
+     columns.add(eventDesc.getTargetColumnName());
+ 
++    if (!work.getEventSourceColumnTypeMap().containsKey(sourceName)) {
++      work.getEventSourceColumnTypeMap().put(sourceName, new LinkedList<String>());
++    }
++    List<String> columnTypes = work.getEventSourceColumnTypeMap().get(sourceName);
++    columnTypes.add(eventDesc.getTargetColumnType());
++
+     // store partition key expr in map-work
+     if (!work.getEventSourcePartKeyExprMap().containsKey(sourceName)) {
+       work.getEventSourcePartKeyExprMap().put(sourceName, new LinkedList<ExprNodeDesc>());
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/plan/DynamicPruningEventDesc.java b/ql/src/java/org/apache/hadoop/hive/ql/plan/DynamicPruningEventDesc.java
+index d6617b5..bcca43d 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/plan/DynamicPruningEventDesc.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/plan/DynamicPruningEventDesc.java
+@@ -30,6 +30,9 @@
+   // column in the target table that will be pruned against
+   private String targetColumnName;
+ 
++  // type of target column
++  private String targetColumnType;
++
+   // tableScan is only available during compile
+   private transient TableScanOperator tableScan;
+ 
+@@ -45,6 +48,10 @@ public void setTableScan(TableScanOperator tableScan) {
+   }
+ 
+   @Explain(displayName = "Target column")
++  public String displayTargetColumn() {
++    return targetColumnName + " (" + targetColumnType + ")";
++  }
++
+   public String getTargetColumnName() {
+     return targetColumnName;
+   }
+@@ -53,6 +60,14 @@ public void setTargetColumnName(String columnName) {
+     this.targetColumnName = columnName;
+   }
+ 
++  public String getTargetColumnType() {
++    return targetColumnType;
++  }
++
++  public void setTargetColumnType(String columnType) {
++    this.targetColumnType = columnType;
++  }
++
+   @Override
+   public void writeEventHeader(DataOutputBuffer buffer) throws IOException {
+     super.writeEventHeader(buffer);
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/plan/MapWork.java b/ql/src/java/org/apache/hadoop/hive/ql/plan/MapWork.java
+index 3326588..a90f80c 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/plan/MapWork.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/plan/MapWork.java
+@@ -123,6 +123,8 @@
+       new LinkedHashMap<String, List<TableDesc>>();
+   private Map<String, List<String>> eventSourceColumnNameMap =
+       new LinkedHashMap<String, List<String>>();
++  private Map<String, List<String>> eventSourceColumnTypeMap =
++      new LinkedHashMap<String, List<String>>();
+   private Map<String, List<ExprNodeDesc>> eventSourcePartKeyExprMap =
+       new LinkedHashMap<String, List<ExprNodeDesc>>();
+ 
+@@ -552,6 +554,10 @@ public void setEventSourceColumnNameMap(Map<String, List<String>> map) {
+     return eventSourceColumnNameMap;
+   }
+ 
++  public Map<String, List<String>> getEventSourceColumnTypeMap() {
++    return eventSourceColumnTypeMap;
++  }
++
+   public Map<String, List<ExprNodeDesc>> getEventSourcePartKeyExprMap() {
+     return eventSourcePartKeyExprMap;
+   }
+-- 
+1.7.9.5
+
